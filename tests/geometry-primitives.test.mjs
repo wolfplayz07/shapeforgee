@@ -5,6 +5,7 @@ import {
   HIGH_FIDELITY_PRIMITIVES,
   createCapsuleMesh,
   createConeMesh,
+  createEllipsoidMesh,
   createFrustumMesh,
   createPrimitiveMesh,
   createWedgeMesh,
@@ -34,6 +35,7 @@ test("high-fidelity primitive vocabulary remains reusable rather than object-spe
     "box",
     "cylinder",
     "capsule",
+    "ellipsoid",
     "frustum",
     "cone",
     "wedge",
@@ -47,6 +49,15 @@ test("capsule creates a softened elongated silhouette while preserving requested
   assert.ok(Math.abs(extent(mesh.points, 0) - 120) < 0.001);
   assert.ok(extent(mesh.points, 1) <= 48.001);
   assert.ok(extent(mesh.points, 2) <= 40.001);
+});
+
+test("ellipsoid provides reusable rounded volume for knobs, bulbs, globes, balls, and joints", () => {
+  const mesh = createEllipsoidMesh([60, 42, 36], "x");
+  assertValidMesh(mesh);
+  assert.ok(mesh.points.length > 64);
+  assert.ok(Math.abs(extent(mesh.points, 0) - 60) < 0.01);
+  assert.ok(extent(mesh.points, 1) <= 42.001);
+  assert.ok(extent(mesh.points, 2) <= 36.001);
 });
 
 test("frustum narrows one end for housings, nozzles, shades, and transition pieces", () => {
