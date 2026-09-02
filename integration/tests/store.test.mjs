@@ -19,6 +19,42 @@ test("separate saved projects have unique stable IDs and distinct vehicle recipe
   assert.deepEqual(store.get({ id: first.project.id }), first);
   assert.equal(store.list().assemblies.length, 2);
 });
+test("new flatscreen TV remains bound to its returned project ID", t => {
+  const store = memory(t);
+  create(store, "1969 Mustang", { name: "Older Mustang" });
+  create(store, "1969 SS Chevelle", { name: "Older Chevelle" });
+  const tv = create(store, "flatscreen TV", { name: "Persistence Regression TV" });
+  const retrieved = store.get({ id: tv.project.id });
+  assert.equal(retrieved.project.id, tv.project.id);
+  assert.equal(retrieved.project.name, "Persistence Regression TV");
+  assert.deepEqual(retrieved.project.parts, tv.project.parts);
+  assert.notEqual(retrieved.project.name, "Older Mustang");
+  assert.notEqual(retrieved.project.name, "Older Chevelle");
+});
+test("flatscreen TV identity survives a persistent-store restart", t => {
+  const folder = mkdtempSync(join(tmpdir(), "shapeforge-tv-persistence-"));
+  t.after(() => rmSync(folder, { recursive: true, force: true }));
+  const file = join(folder, "assemblies.sqlite");
+  const first = new AssemblyStore(file);
+  create(first, "1969 Mustang", { name: "Old vehicle" });
+  const tv = create(first, "flatscreen TV", { name: "Restart-safe TV" });
+  first.close();
+  const reopened = new AssemblyStore(file);
+  try {
+    const retrieved = reopened.get({ id: tv.project.id });
+    assert.equal(retrieved.project.id, tv.project.id);
+    assert.equal(retrieved.project.name, "Restart-safe TV");
+    assert.deepEqual(retrieved.project.parts, tv.project.parts);
+  } finally { reopened.close(); }
+});
+test("retrieval refuses a stored document whose embedded project ID does not match the requested ID", t => {
+  const store = memory(t);
+  const first = create(store, "1969 Mustang");
+  const second = create(store, "flatscreen TV");
+  const firstSequence = Number(first.project.id.slice(5));
+  store.db.prepare("UPDATE assemblies SET document = ? WHERE sequence = ?").run(JSON.stringify(second.project), firstSequence);
+  assert.throws(() => store.get({ id: first.project.id }), { code: "PROJECT_ID_MISMATCH" });
+});
 test("SQLite survives restart, including request retry records", t => {
   const folder = mkdtempSync(join(tmpdir(), "shapeforge-store-test-"));
   t.after(() => rmSync(folder, { recursive: true, force: true }));
