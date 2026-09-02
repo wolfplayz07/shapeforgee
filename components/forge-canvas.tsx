@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 
+import { buildPartMesh } from "@/lib/render-shape.mjs";
 import type { ForgePart, ForgeProject, Vec3 } from "@/lib/shapeforge";
 
 interface ForgeCanvasProps {
@@ -44,15 +45,12 @@ interface HitArea {
   depth: number;
 }
 
+interface PartMesh {
+  points: Vec3[];
+  faces: Array<{ indices: number[]; shade: number }>;
+}
+
 const DEFAULT_VIEW: ViewState = { yaw: -0.58, pitch: 0.36, zoom: 1.35 };
-const BOX_FACES = [
-  [0, 1, 2, 3],
-  [4, 7, 6, 5],
-  [0, 4, 5, 1],
-  [3, 2, 6, 7],
-  [1, 5, 6, 2],
-  [0, 3, 7, 4],
-];
 
 const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
@@ -60,24 +58,6 @@ const clamp = (value: number, min: number, max: number) =>
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const multiply = (value: Vec3, scalar: number): Vec3 =>
   [value[0] * scalar, value[1] * scalar, value[2] * scalar];
-
-function rotateLocal(point: Vec3, rotation: Vec3): Vec3 {
-  const [rx, ry, rz] = rotation.map((value) => (value * Math.PI) / 180);
-  let [x, y, z] = point;
-
-  let c = Math.cos(rx);
-  let s = Math.sin(rx);
-  [y, z] = [y * c - z * s, y * s + z * c];
-
-  c = Math.cos(ry);
-  s = Math.sin(ry);
-  [x, z] = [x * c + z * s, -x * s + z * c];
-
-  c = Math.cos(rz);
-  s = Math.sin(rz);
-  [x, y] = [x * c - y * s, x * s + y * c];
-  return [x, y, z];
-}
 
 function shadeColor(hex: string, amount: number) {
   const cleaned = hex.replace("#", "").padEnd(6, "0").slice(0, 6);
@@ -121,54 +101,6 @@ function explosionOffset(part: ForgePart, byId: Map<string, ForgePart>, explode:
   });
   if (part.detached) offset = add(offset, [65, -42, 78]);
   return offset;
-}
-
-function boxMesh(part: ForgePart, center: Vec3) {
-  const [width, height, depth] = part.size.map((value) => value / 2);
-  const local: Vec3[] = [
-    [-width, -height, -depth],
-    [width, -height, -depth],
-    [width, height, -depth],
-    [-width, height, -depth],
-    [-width, -height, depth],
-    [width, -height, depth],
-    [width, height, depth],
-    [-width, height, depth],
-  ];
-  const points = local.map((point) => add(rotateLocal(point, part.rotation), center));
-  return {
-    points,
-    faces: BOX_FACES.map((indices, index) => ({ indices, shade: [-20, 14, -8, 9, -2, -13][index] })),
-  };
-}
-
-function cylinderMesh(part: ForgePart, center: Vec3) {
-  const segments = 16;
-  const axis = part.axis ?? "z";
-  const [sx, sy, sz] = part.size;
-  const points: Vec3[] = [];
-
-  for (let side = -1; side <= 1; side += 2) {
-    for (let i = 0; i < segments; i += 1) {
-      const angle = (i / segments) * Math.PI * 2;
-      const cosine = Math.cos(angle);
-      const sine = Math.sin(angle);
-      let point: Vec3;
-      if (axis === "x") point = [side * sx / 2, cosine * sy / 2, sine * sz / 2];
-      else if (axis === "y") point = [cosine * sx / 2, side * sy / 2, sine * sz / 2];
-      else point = [cosine * sx / 2, sine * sy / 2, side * sz / 2];
-      points.push(add(rotateLocal(point, part.rotation), center));
-    }
-  }
-
-  const faces: Array<{ indices: number[]; shade: number }> = [];
-  for (let i = 0; i < segments; i += 1) {
-    const next = (i + 1) % segments;
-    faces.push({ indices: [i, next, segments + next, segments + i], shade: -14 + Math.round(Math.cos((i / segments) * Math.PI * 2) * 20) });
-  }
-  faces.push({ indices: Array.from({ length: segments }, (_, index) => segments - 1 - index), shade: -18 });
-  faces.push({ indices: Array.from({ length: segments }, (_, index) => segments + index), shade: 13 });
-  return { points, faces };
 }
 
 export function ForgeCanvas({
@@ -243,7 +175,14 @@ export function ForgeCanvas({
 
     context.clearRect(0, 0, width, height);
 
-    const backdrop = context.createRadialGradient(width * 0.52, height * 0.42, 20, width * 0.52, height * 0.42, Math.max(width, height) * 0.72);
+    const backdrop = context.createRadialGradient(
+      width * 0.52,
+      height * 0.42,
+      20,
+      width * 0.52,
+      height * 0.42,
+      Math.max(width, height) * 0.72,
+    );
     backdrop.addColorStop(0, "#152536");
     backdrop.addColorStop(0.52, "#0b141e");
     backdrop.addColorStop(1, "#060a0f");
@@ -277,12 +216,13 @@ export function ForgeCanvas({
 
     project.parts.filter((part) => !part.hidden).forEach((part) => {
       const center = add(part.position, explosionOffset(part, byId, explode));
-      const mesh = part.kind === "cylinder" ? cylinderMesh(part, center) : boxMesh(part, center);
+      const mesh = buildPartMesh(part, center) as PartMesh;
       const projected = mesh.points.map(projectPoint);
       projectedByPart.set(part.id, projected);
       centers.set(part.id, projectPoint(center));
       mesh.faces.forEach((face) => {
-        const points = face.indices.map((index) => projected[index]);
+        const points = face.indices.map((index) => projected[index]).filter(Boolean);
+        if (points.length < 3) return;
         faces.push({
           part,
           points,
@@ -294,7 +234,6 @@ export function ForgeCanvas({
 
     faces.sort((a, b) => a.depth - b.depth);
     faces.forEach((face) => {
-      if (face.points.length < 3) return;
       context.beginPath();
       context.moveTo(face.points[0].x, face.points[0].y);
       face.points.slice(1).forEach((point) => context.lineTo(point.x, point.y));
