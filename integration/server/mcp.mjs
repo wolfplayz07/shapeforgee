@@ -58,7 +58,7 @@ export function createShapeForgeServer(store, widgetHtml) {
   register("save_assembly", "Design and save custom ShapeForge assembly", `${CUSTOM_SHAPE_GUIDANCE} Save a separate assembly, not an overwrite. Use COMP-000001-style unique IDs, valid parent/related links, positive dimensions, and a fresh UUID request_id. Geometry is conceptual and is not engineering-validated.`, saveSchema, false, input => recordResult(store.save(input)));
   register("list_assemblies", "Find saved ShapeForge assemblies", "Use this to find saved projects by name. Returns IDs and current revisions; use next_offset for another page. Does not modify projects.", listSchema, true, input => {
     const result = store.list(input);
-    return { content: [{ type: "text", text: JSON.stringify(result)) }], structuredContent: result };
+    return { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result };
   });
   register("get_assembly", "Read ShapeForge assembly", "Use this to inspect the complete saved assembly and component IDs before editing. Omit revision for the latest version, or supply a revision to inspect historical geometry. Does not open the viewer.", getSchema, true, input => recordResult(store.get(input), true));
   register("update_component", "Edit ShapeForge component", "Use this to save a requested component change. Fetch the current assembly first and pass its expected_revision, component_id, and a fresh UUID request_id. A stale revision is rejected. Prior revisions remain available through get_assembly. Retrying identical input with the same UUID is safe.", updateSchema, false, input => recordResult(store.update(input)));
