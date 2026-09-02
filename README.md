@@ -21,6 +21,12 @@ This is a procedural prototype, not a general AI text-to-3D model or engineering
 
 ## Run locally
 
+### Callable ShapeForge integration
+
+The separate [MCP / ChatGPT integration](integration/README.md) adds saved-project tools and an interactive viewer for reuse across projects. It runs as a private local service with SQLite persistence; it is not automatically connected to ChatGPT by installing GitHub access. See its README for setup, tests, and hosting/authentication boundaries. The existing website is unchanged.
+
+### Website
+
 Use Node.js 22.13 or newer. The included helper scripts target Linux; on Windows, use WSL or a Linux development environment such as GitHub Codespaces.
 
 ```bash

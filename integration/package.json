@@ -1,0 +1,22 @@
+{
+  "name": "shapeforge-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.18.0" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node --experimental-strip-types server/http.mjs",
+    "start:stdio": "node --experimental-strip-types server/stdio.mjs",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "check": "npm run build && npm test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/ext-apps": "1.7.5",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "zod": "3.25.76"
+  },
+  "devDependencies": { "esbuild": "^0.27.0" }
+}
