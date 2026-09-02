@@ -25,6 +25,34 @@ function assertValid(project) {
   assert.deepEqual(failed, []);
 }
 
+test("preserves the known A-72 bowling machine while adding new inference paths", () => {
+  const project = createForgeProject("A-72 bowling machine", { detail: "detailed" });
+  const names = new Set(project.parts.map((part) => part.name));
+
+  assert.equal(project.name, "A-72 Bowling Machine");
+  assert.equal(project.parts.length, 12);
+  assert.equal(project.source, "recovered-recipe");
+
+  for (const expected of [
+    "Base Frame",
+    "Upper Housing",
+    "Elevation Lift",
+    "Boom Arm",
+    "Pin Table",
+    "Pin Set",
+    "Lift Motor",
+    "Left Drive Wheel",
+    "Right Drive Wheel",
+    "Control Box",
+    "Ball Return Tunnel",
+    "Side Safety Guard",
+  ]) {
+    assert.ok(names.has(expected), `missing ${expected}`);
+  }
+
+  assertValid(project);
+});
+
 test("builds a six-drawer dresser from a plain request with small hardware", () => {
   const project = createForgeProject(
     "make me a six drawer walnut dresser with brass pulls",
