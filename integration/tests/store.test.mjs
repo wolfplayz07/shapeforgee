@@ -19,6 +19,14 @@ test("separate saved projects have unique stable IDs and distinct vehicle recipe
   assert.deepEqual(store.get({ id: first.project.id }), first);
   assert.equal(store.list().assemblies.length, 2);
 });
+test("get refuses a persisted document whose identity does not match the requested project ID", t => {
+  const store = memory(t);
+  const tv = create(store, "flatscreen TV");
+  const wrong = createForgeProject("1969 Mustang");
+  wrong.id = "PROJ-999999";
+  store.db.prepare("UPDATE assemblies SET document = ? WHERE project_id = ?").run(JSON.stringify(wrong), tv.project.id);
+  assert.throws(() => store.get({ id: tv.project.id }), { code: "IDENTITY_MISMATCH" });
+});
 test("SQLite survives restart, including request retry records", t => {
   const folder = mkdtempSync(join(tmpdir(), "shapeforge-store-test-"));
   t.after(() => rmSync(folder, { recursive: true, force: true }));

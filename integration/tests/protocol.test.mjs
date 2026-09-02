@@ -49,6 +49,25 @@ test("HTTP MCP handshake, discovery, viewer resource and full assembly workflow"
   assert.equal(missing.isError, true);
   assert.match(missing.content[0].text, /NOT_FOUND/);
 });
+test("create_assembly persists a flatscreen TV under its returned ID", async t => {
+  const url = await local(t);
+  const client = new Client({ name: "shapeforge-tv-regression", version: "1.0.0" });
+  await client.connect(new StreamableHTTPClientTransport(new URL(`${url}/mcp`)));
+  t.after(() => client.close());
+  const created = await client.callTool({ name: "create_assembly", arguments: { request_id: randomUUID(), prompt: "flatscreen TV" } });
+  assert.ok(!created.isError, JSON.stringify(created));
+  const id = created.structuredContent.id;
+  assert.equal(created._meta.project.id, id);
+  assert.equal(created._meta.project.name, "Television");
+  assert.equal(created._meta.project.prompt, "flatscreen TV");
+  const fetched = await client.callTool({ name: "get_assembly", arguments: { id } });
+  assert.ok(!fetched.isError, JSON.stringify(fetched));
+  assert.equal(fetched.structuredContent.id, id);
+  assert.equal(fetched.structuredContent.project.id, id);
+  assert.equal(fetched.structuredContent.project.name, "Television");
+  assert.equal(fetched.structuredContent.project.prompt, "flatscreen TV");
+  assert.deepEqual(fetched.structuredContent.project, created._meta.project);
+});
 test("HTTP rejects foreign origins, DNS rebinding hosts, malformed and oversized bodies", async t => {
   const url = await local(t);
   assert.equal((await fetch(`${url}/health`)).status, 200);
