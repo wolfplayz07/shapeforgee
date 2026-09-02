@@ -47,7 +47,6 @@ export class AssemblyStore {
         this.db.exec("COMMIT");
         return JSON.parse(previous.response);
       }
-      // Match the persisted/wire representation, including removal of undefined fields.
       const result = JSON.parse(JSON.stringify(action()));
       this.db.prepare("INSERT INTO requests VALUES (?, ?, ?)").run(input.request_id, fingerprint, JSON.stringify(result));
       this.db.exec("COMMIT");
@@ -93,7 +92,12 @@ export class AssemblyStore {
       ? this.db.prepare("SELECT document, revision, updated_at FROM revisions WHERE assembly_sequence = ? AND revision = ?").get(sequence, revision)
       : this.db.prepare("SELECT document, revision, updated_at FROM assemblies WHERE sequence = ?").get(sequence);
     if (!row) throw new AssemblyError("NOT_FOUND", "That assembly or revision does not exist. Use list_assemblies to find saved IDs.");
-    return { project: JSON.parse(row.document), revision: row.revision, updated_at: row.updated_at };
+    const project = JSON.parse(row.document);
+    // Never allow a sequence lookup to substitute a document belonging to another
+    // project ID. This turns stale/corrupt/mixed stores into an explicit failure
+    // instead of opening an unrelated older assembly.
+    if (project.id !== id) throw new AssemblyError("PROJECT_ID_MISMATCH", `Stored assembly identity mismatch for ${id}; refusing to substitute ${project.id || "an unidentified project"}.`);
+    return { project, revision: row.revision, updated_at: row.updated_at };
   }
   list(raw = {}) {
     const { query, limit, offset } = listSchema.parse(raw);
