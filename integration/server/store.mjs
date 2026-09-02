@@ -11,6 +11,27 @@ function canonical(value) {
   return value;
 }
 
+function canonicalJson(value) {
+  return JSON.stringify(canonical(value));
+}
+
+function loadProjectById(db, id) {
+  const row = db.prepare("SELECT document FROM assemblies WHERE project_id = ?").get(id);
+  if (!row) return null;
+  const project = JSON.parse(row.document);
+  if (project.id !== id) throw new AssemblyError("IDENTITY_MISMATCH", "The saved assembly identity is inconsistent. ShapeForge will not substitute a different project for this ID.");
+  return project;
+}
+
+function assertStoredProjectMatches(db, project, code, message) {
+  if (!project?.id) return;
+  const persisted = loadProjectById(db, project.id);
+  if (!persisted) throw new AssemblyError(code, message);
+  if (canonicalJson(persisted) !== canonicalJson(project)) {
+    throw new AssemblyError("IDENTITY_MISMATCH", "The returned assembly does not match the project stored under its ID. ShapeForge will not substitute a different project.");
+  }
+}
+
 const projectIdForSequence = sequence => `PROJ-${String(sequence).padStart(6, "0")}`;
 
 export class AssemblyStore {
@@ -70,17 +91,13 @@ export class AssemblyStore {
       if (previous) {
         if (previous.fingerprint !== fingerprint) throw new AssemblyError("REQUEST_ID_REUSED", "This request_id was already used for different input. Use a new UUID for a new action.");
         const cached = JSON.parse(previous.response);
-        if (cached?.project?.id && !this.db.prepare("SELECT 1 FROM assemblies WHERE project_id = ?").get(cached.project.id)) {
-          throw new AssemblyError("REQUEST_ORPHANED", "The saved result for this request no longer has a matching assembly. Use a new request_id.");
-        }
+        assertStoredProjectMatches(this.db, cached?.project, "REQUEST_ORPHANED", "The saved result for this request no longer has a matching assembly. Use a new request_id.");
         this.db.exec("COMMIT");
         return cached;
       }
       // Match the persisted/wire representation, including removal of undefined fields.
       const result = JSON.parse(JSON.stringify(action()));
-      if (result?.project?.id && !this.db.prepare("SELECT 1 FROM assemblies WHERE project_id = ?").get(result.project.id)) {
-        throw new AssemblyError("PERSISTENCE_FAILURE", "The assembly was not stored under the ID returned by ShapeForge.");
-      }
+      assertStoredProjectMatches(this.db, result?.project, "PERSISTENCE_FAILURE", "The assembly was not stored under the ID returned by ShapeForge.");
       this.db.prepare("INSERT INTO requests VALUES (?, ?, ?)").run(input.request_id, fingerprint, JSON.stringify(result));
       this.db.exec("COMMIT");
       return result;
@@ -96,8 +113,7 @@ export class AssemblyStore {
     const document = JSON.stringify(project);
     this.db.prepare("UPDATE assemblies SET project_id = ?, document = ? WHERE sequence = ?").run(project.id, document, sequence);
     this.db.prepare("INSERT INTO revisions VALUES (?, 1, ?, ?)").run(sequence, updated_at, document);
-    const persisted = this.db.prepare("SELECT document FROM assemblies WHERE project_id = ?").get(project.id);
-    if (!persisted || JSON.parse(persisted.document).id !== project.id) throw new AssemblyError("PERSISTENCE_FAILURE", "The assembly could not be stored under its returned project ID.");
+    assertStoredProjectMatches(this.db, project, "PERSISTENCE_FAILURE", "The assembly could not be stored under its returned project ID.");
     return { project, revision: 1, updated_at };
   }
   create(raw) {
