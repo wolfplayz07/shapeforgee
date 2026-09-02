@@ -122,3 +122,57 @@ test("basic pen detail keeps the silhouette but removes tiny internals", () => {
   assert.ok(!names.has("Click Cam"));
   assertValid(project);
 });
+
+test("uses one generalized handheld silhouette for unrelated handheld requests", () => {
+  const drill = createForgeProject("yellow cordless handheld drill", { detail: "detailed" });
+  const dryer = createForgeProject("portable blue hair dryer with handle", { detail: "detailed" });
+
+  for (const project of [drill, dryer]) {
+    const names = new Set(project.parts.map((part) => part.name));
+    assert.ok(names.has("Main Body Housing"));
+    assert.ok(names.has("Front Barrel"));
+    assert.ok(names.has("Angled Handle"));
+    assert.ok(names.has("Grip Surface"));
+    assert.ok(names.has("Primary Control"));
+    assertValid(project);
+  }
+
+  assert.ok(drill.parts.some((part) => part.name === "Power Base"));
+  assert.ok(!dryer.parts.some((part) => part.name === "Power Base"));
+  assert.ok(dryer.parts.find((part) => part.name === "Working End").size[0] > drill.parts.find((part) => part.name === "Working End").size[0]);
+});
+
+test("uses a thin-panel silhouette instead of the old generic box assembly", () => {
+  const project = createForgeProject("passive flat panel collector with support frame");
+  const panel = project.parts.find((part) => part.name === "Primary Panel");
+  const names = new Set(project.parts.map((part) => part.name));
+
+  assert.ok(panel);
+  assert.ok(panel.size[0] / panel.size[1] > 20);
+  assert.ok(names.has("Rear Layer"));
+  assert.ok(names.has("Left Support"));
+  assert.ok(names.has("Right Support"));
+  assertValid(project);
+});
+
+test("uses a vessel silhouette for containers and adds handles only when appropriate", () => {
+  const bottle = createForgeProject("steel reusable bottle with cap");
+  const mug = createForgeProject("blue coffee mug with handle");
+
+  assert.ok(bottle.parts.some((part) => part.name === "Container Body" && part.kind === "cylinder"));
+  assert.ok(!bottle.parts.some((part) => part.name === "Side Handle"));
+  assert.ok(mug.parts.some((part) => part.name === "Side Handle"));
+  assertValid(bottle);
+  assertValid(mug);
+});
+
+test("uses a hinged-mechanism silhouette for a stapler-like request", () => {
+  const project = createForgeProject("compact desktop stapler");
+  const names = new Set(project.parts.map((part) => part.name));
+
+  assert.ok(names.has("Lower Base"));
+  assert.ok(names.has("Upper Arm"));
+  assert.ok(names.has("Pivot Hinge"));
+  assert.ok(names.has("Working Contact"));
+  assertValid(project);
+});
