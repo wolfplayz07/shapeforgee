@@ -19,6 +19,17 @@ test("separate saved projects have unique stable IDs and distinct vehicle recipe
   assert.deepEqual(store.get({ id: first.project.id }), first);
   assert.equal(store.list().assemblies.length, 2);
 });
+test("create stores flatscreen TV under the exact returned ID", t => {
+  const store = memory(t);
+  const created = create(store, "flatscreen TV");
+  const fetched = store.get({ id: created.project.id });
+  assert.equal(created.project.name, "Television");
+  assert.equal(created.project.prompt, "flatscreen TV");
+  assert.equal(fetched.project.id, created.project.id);
+  assert.equal(fetched.project.name, "Television");
+  assert.equal(fetched.project.prompt, "flatscreen TV");
+  assert.deepEqual(fetched.project, created.project);
+});
 test("get refuses a persisted document whose identity does not match the requested project ID", t => {
   const store = memory(t);
   const tv = create(store, "flatscreen TV");
@@ -26,6 +37,15 @@ test("get refuses a persisted document whose identity does not match the request
   wrong.id = "PROJ-999999";
   store.db.prepare("UPDATE assemblies SET document = ? WHERE project_id = ?").run(JSON.stringify(wrong), tv.project.id);
   assert.throws(() => store.get({ id: tv.project.id }), { code: "IDENTITY_MISMATCH" });
+});
+test("request retries reject cached projects that no longer match persisted identity", t => {
+  const store = memory(t);
+  const request = { request_id: randomUUID(), prompt: "flatscreen TV" };
+  const tv = store.create(request);
+  const substituted = createForgeProject("1969 SS Chevelle");
+  substituted.id = tv.project.id;
+  store.db.prepare("UPDATE assemblies SET name = ?, document = ? WHERE project_id = ?").run(substituted.name, JSON.stringify(substituted), tv.project.id);
+  assert.throws(() => store.create(request), { code: "IDENTITY_MISMATCH" });
 });
 test("SQLite survives restart, including request retry records", t => {
   const folder = mkdtempSync(join(tmpdir(), "shapeforge-store-test-"));
