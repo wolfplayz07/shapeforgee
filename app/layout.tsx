@@ -5,6 +5,9 @@ export const metadata: Metadata = {
   title: "ShapeForge — Interactive Assembly Designer",
   description:
     "Generate, inspect, edit, validate, and progressively explode interactive mechanical concept assemblies.",
+  other: {
+    "codex-preview": "development",
+  },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
