@@ -18,6 +18,7 @@ type AssemblyRecord = {
 
 const memoryAssemblies = new Map<string, AssemblyRecord>();
 const projectIdPattern = /^PROJ-\d{6}$/;
+const cacheBaseUrl = "https://shapeforge.local/assemblies/";
 
 const jsonHeaders = {
   "Content-Type": "application/json",
@@ -61,24 +62,45 @@ async function ensureTable(db?: D1Database) {
 
 async function saveRecord(env: Env, record: AssemblyRecord) {
   memoryAssemblies.set(record.project.id, record);
-  if (!env.DB) return;
-  await ensureTable(env.DB);
-  await env.DB.prepare(`
-    INSERT INTO assemblies (project_id, name, revision, updated_at, document)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(project_id) DO UPDATE SET
-      name = excluded.name,
-      revision = excluded.revision,
-      updated_at = excluded.updated_at,
-      document = excluded.document
-  `).bind(record.project.id, record.project.name, record.revision, record.updated_at, JSON.stringify(record.project)).run();
+  if (env.DB) {
+    await ensureTable(env.DB);
+    await env.DB.prepare(`
+      INSERT INTO assemblies (project_id, name, revision, updated_at, document)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(project_id) DO UPDATE SET
+        name = excluded.name,
+        revision = excluded.revision,
+        updated_at = excluded.updated_at,
+        document = excluded.document
+    `).bind(record.project.id, record.project.name, record.revision, record.updated_at, JSON.stringify(record.project)).run();
+    return;
+  }
+  if (typeof caches !== "undefined") {
+    await caches.default.put(
+      new Request(`${cacheBaseUrl}${record.project.id}`),
+      new Response(JSON.stringify(record), {
+        headers: {
+          "Cache-Control": "public, max-age=31536000, immutable",
+          "Content-Type": "application/json",
+        },
+      }),
+    );
+  }
 }
 
 async function loadRecord(env: Env, id: string): Promise<AssemblyRecord | null> {
   if (!projectIdPattern.test(id)) return null;
   const cached = memoryAssemblies.get(id);
   if (cached) return cached;
-  if (!env.DB) return null;
+  if (!env.DB) {
+    if (typeof caches === "undefined") return null;
+    const response = await caches.default.match(new Request(`${cacheBaseUrl}${id}`));
+    if (!response) return null;
+    const record = await response.json<AssemblyRecord>();
+    if (record.project.id !== id) throw new Error("IDENTITY_MISMATCH");
+    memoryAssemblies.set(id, record);
+    return record;
+  }
   await ensureTable(env.DB);
   const row = await env.DB.prepare("SELECT revision, updated_at, document FROM assemblies WHERE project_id = ?").bind(id).first<{
     revision: number;
