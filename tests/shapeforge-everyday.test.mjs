@@ -25,6 +25,22 @@ function assertValid(project) {
   assert.deepEqual(failed, []);
 }
 
+function namesOf(project) {
+  return project.parts.map((part) => part.name);
+}
+
+function extents(project) {
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (const part of project.parts) {
+    for (let axis = 0; axis < 3; axis += 1) {
+      min[axis] = Math.min(min[axis], part.position[axis] - part.size[axis] / 2);
+      max[axis] = Math.max(max[axis], part.position[axis] + part.size[axis] / 2);
+    }
+  }
+  return max.map((value, axis) => value - min[axis]);
+}
+
 test("preserves the known A-72 bowling machine while adding new inference paths", () => {
   const project = createForgeProject("A-72 bowling machine", { detail: "detailed" });
   const names = new Set(project.parts.map((part) => part.name));
@@ -158,4 +174,98 @@ test("replaces generic fallback with prompt-specific semantic decompositions", (
   }
 
   assert.equal(signatures.size, cases.length);
+});
+
+test("semantic planner fixes observed subject, modifier, and exclusion regressions", () => {
+  const glasses = createForgeProject("eye glasses", { detail: "detailed" });
+  const glassesNames = namesOf(glasses);
+  const glassesExtents = extents(glasses);
+  assert.ok(glassesNames.includes("Left Lens"));
+  assert.ok(glassesNames.includes("Right Lens"));
+  assert.ok(glassesNames.includes("Left Temple Arm"));
+  assert.ok(glassesNames.includes("Right Temple Arm"));
+  assert.ok(!glassesNames.some((name) => /Outer Shell/.test(name)));
+  assert.ok(glassesExtents[0] > glassesExtents[1] * 2, "eyewear should be wide and thin");
+  assert.ok(glassesExtents[0] > glassesExtents[2] * 1.4, "eyewear should not be box-deep");
+  const leftLens = glasses.parts.find((part) => part.name === "Left Lens");
+  const rightLens = glasses.parts.find((part) => part.name === "Right Lens");
+  assert.equal(leftLens.position[0], -rightLens.position[0], "lenses should be bilaterally placed");
+  assertValid(glasses);
+
+  const wrench = createForgeProject("wrench", { detail: "detailed" });
+  const wrenchNames = namesOf(wrench);
+  const wrenchExtents = extents(wrench);
+  assert.ok(wrenchNames.includes("Slim Handle Beam"));
+  assert.ok(wrenchNames.includes("Open Jaw Head"));
+  assert.ok(wrenchNames.includes("Box End Ring"));
+  assert.ok(!wrenchNames.some((name) => /Outer Shell/.test(name)));
+  assert.ok(wrenchExtents[0] > wrenchExtents[1] * 4, "wrench should be elongated");
+  assert.ok(wrenchExtents[0] > wrenchExtents[2] * 4, "wrench should not be a boxy housing");
+  assertValid(wrench);
+
+  const transmission = createForgeProject("car transmission", { detail: "detailed" });
+  const transmissionNames = namesOf(transmission);
+  assert.ok(transmissionNames.includes("Transmission Gear Case"));
+  assert.ok(transmissionNames.includes("Input Shaft"));
+  assert.ok(transmissionNames.includes("Output Shaft"));
+  assert.ok(!transmissionNames.some((name) => /wheel|chassis|door|fascia|bumper|windshield/i.test(name)));
+  assert.ok(/transmission/i.test(transmission.name));
+  assertValid(transmission);
+
+  const corded = createForgeProject("corded drill", { detail: "detailed" });
+  const cordedNames = namesOf(corded);
+  assert.ok(cordedNames.includes("Cord Strain Relief"));
+  assert.ok(cordedNames.includes("Power Cord"));
+  assert.ok(cordedNames.includes("Two-Prong Plug"));
+  assert.ok(!cordedNames.includes("Slide-On Battery Pack"));
+  assertValid(corded);
+
+  const fancy = createForgeProject("fancy coffee maker not a normal coffee machine with the regular pot of joe", { detail: "detailed" });
+  const fancyNames = namesOf(fancy);
+  assert.ok(fancyNames.includes("Sculpted Espresso Body"));
+  assert.ok(fancyNames.includes("Portafilter Group Head"));
+  assert.ok(fancyNames.includes("Steam Wand"));
+  assert.ok(!fancyNames.some((name) => /glass carafe|warming plate|brew basket|carafe handle/i.test(name)));
+  assertValid(fancy);
+
+  const lamp = createForgeProject("desk lamp", { detail: "detailed" });
+  const lampNames = namesOf(lamp);
+  assert.ok(lampNames.includes("Lamp Base"));
+  assert.ok(lampNames.includes("Adjustable Stem"));
+  assert.ok(lampNames.includes("Lamp Shade"));
+  assert.ok(!lampNames.some((name) => /tabletop|front left leg|center brace/i.test(name)));
+  assertValid(lamp);
+});
+
+test("semantic planner generalizes across unseen component, wearable, tool, appliance, and non-box prompts", () => {
+  const drainPump = createForgeProject("washing machine drain pump", { detail: "detailed" });
+  const drainPumpNames = namesOf(drainPump);
+  assert.ok(drainPumpNames.some((name) => /Pump Barrel|Housing|Shaft|Gear Case/.test(name)));
+  assert.ok(!drainPumpNames.some((name) => /washer cabinet|drum|door|control console/i.test(name)));
+  assertValid(drainPump);
+
+  const goggles = createForgeProject("safety goggles", { detail: "detailed" });
+  assert.ok(namesOf(goggles).includes("Paired Nose Pads"));
+  assert.ok(extents(goggles)[0] > extents(goggles)[1] * 2);
+  assertValid(goggles);
+
+  const scraper = createForgeProject("paint scraper hand tool", { detail: "detailed" });
+  assert.ok(namesOf(scraper).includes("Slim Handle Beam"));
+  assert.ok(extents(scraper)[0] > extents(scraper)[2] * 4);
+  assertValid(scraper);
+
+  const espresso = createForgeProject("compact espresso brewer without a glass carafe", { detail: "detailed" });
+  assert.ok(namesOf(espresso).includes("Portafilter Group Head"));
+  assert.ok(!namesOf(espresso).some((name) => /carafe|warming plate/i.test(name)));
+  assertValid(espresso);
+
+  const hoop = createForgeProject("folding hula hoop", { detail: "detailed" });
+  const hoopNames = namesOf(hoop);
+  const hoopExtents = extents(hoop);
+  assert.ok(hoopNames.includes("Front Curved Segment"));
+  assert.ok(hoopNames.includes("Left Curved Segment"));
+  assert.ok(!hoopNames.some((name) => /Outer Shell/.test(name)));
+  assert.ok(hoopExtents[0] > hoopExtents[1] * 8);
+  assert.ok(hoopExtents[2] > hoopExtents[1] * 8);
+  assertValid(hoop);
 });
