@@ -28,7 +28,12 @@ export interface ForgeProject {
   name: string;
   prompt: string;
   createdAt: string;
-  source: "recovered-recipe" | "procedural-vehicle" | "procedural-concept" | "imported";
+  source: "recovered-recipe" | "procedural-vehicle" | "procedural-concept" | "workers-ai" | "emergency-fallback" | "imported";
+  planner?: {
+    source: "recovered-recipe" | "workers-ai" | "semantic-fallback" | "emergency-fallback" | "imported";
+    model?: string;
+    warnings?: string[];
+  };
   allocator: { nextComponent: number };
   settings: { scale: number; detail: DetailLevel };
   parts: ForgePart[];
