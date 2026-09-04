@@ -155,6 +155,7 @@ function buildEverydayProject(
     prompt,
     createdAt: new Date().toISOString(),
     source: "procedural-concept",
+    planner: { source: "semantic-fallback" },
     allocator: { nextComponent: parts.length + 1 },
     settings: { scale, detail },
     parts,
@@ -715,7 +716,29 @@ function coreRecipeMatchesPrompt(project: ForgeProject, prompt: string) {
   const name = project.name.toLowerCase();
   if (name === "table" && /\b(lamp|light|sconce|lantern)\b/.test(value)) return false;
   if (/vehicle|car|automobile|coupe|sedan|roadster/.test(name) && /\b(transmission|gearbox|differential|clutch)\b/.test(value)) return false;
+  if (/\bbicycle\b|\bbike\b/.test(name) && /\b(derailleur|brake|caliper|fork|crankset|cassette|chainring|shifter|hub|bottom bracket)\b/.test(value)) return false;
   return true;
+}
+
+export function tryRecoveredRecipeProject(
+  prompt: string,
+  options: { scale?: number; detail?: DetailLevel } = {},
+): ForgeProject | null {
+  const cleaned = prompt.trim() || "A-72 bowling machine";
+  const coreProject = createCoreForgeProject(cleaned, options);
+  if (hasCoreGenericFallback(coreProject) || !coreRecipeMatchesPrompt(coreProject, cleaned)) return null;
+  coreProject.planner = { source: "recovered-recipe" };
+  return coreProject;
+}
+
+export function createSemanticFallbackProject(
+  prompt: string,
+  options: { scale?: number; detail?: DetailLevel } = {},
+  warnings: string[] = [],
+): ForgeProject {
+  const project = generalUnknownProject(prompt, options);
+  project.planner = { source: "semantic-fallback", warnings };
+  return project;
 }
 
 function matchesDresser(prompt: string) {
@@ -735,8 +758,8 @@ export function createForgeProject(
   if (matchesPen(cleaned)) return penProject(cleaned, options);
   if (matchesGeneralUnknownProfile(cleaned)) return generalUnknownProject(cleaned, options);
 
-  const coreProject = createCoreForgeProject(cleaned, options);
-  if (!hasCoreGenericFallback(coreProject) && coreRecipeMatchesPrompt(coreProject, cleaned)) return coreProject;
+  const coreProject = tryRecoveredRecipeProject(cleaned, options);
+  if (coreProject) return coreProject;
 
   return generalUnknownProject(cleaned, options);
 }

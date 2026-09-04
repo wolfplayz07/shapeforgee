@@ -31,6 +31,12 @@ const localBindingConfig = {
         },
       ]
     : [],
+  ai: {
+    binding: "AI",
+  },
+  vars: {
+    SHAPEFORGE_AI_MODEL: "@cf/meta/llama-3.1-8b-instruct-fast",
+  },
 };
 
 export default defineConfig(async () => {

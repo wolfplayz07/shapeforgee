@@ -2,10 +2,13 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { handleShapeForgeMcp } from "./shapeforge-mcp";
+import { createForgeProjectWithPlanner, type WorkersAIBinding } from "./geometry-planner";
 
 interface Env {
+  AI?: WorkersAIBinding;
   ASSETS: Fetcher;
   DB?: D1Database;
+  SHAPEFORGE_AI_MODEL?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -13,6 +16,31 @@ interface Env {
       };
     };
   };
+}
+
+const apiHeaders = {
+  "Content-Type": "application/json",
+  "Cache-Control": "no-store",
+};
+
+function apiJson(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: apiHeaders });
+}
+
+async function handleForgeGenerate(request: Request, env: Env) {
+  if (request.method !== "POST") return apiJson({ error: "Method not allowed" }, 405);
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return apiJson({ error: "Invalid JSON body" }, 400);
+  }
+  const prompt = typeof body.prompt === "string" && body.prompt.trim() ? body.prompt.trim() : "";
+  if (!prompt) return apiJson({ error: "Provide a prompt." }, 400);
+  const detail = body.detail === "basic" ? "basic" : "detailed";
+  const scale = typeof body.scale === "number" ? body.scale : undefined;
+  const project = await createForgeProjectWithPlanner(prompt, env, { detail, scale });
+  return apiJson({ project });
 }
 
 interface ExecutionContext {
@@ -32,6 +60,10 @@ const worker = {
 
     if (url.pathname === "/mcp") {
       return handleShapeForgeMcp(request, env);
+    }
+
+    if (url.pathname === "/api/forge") {
+      return handleForgeGenerate(request, env);
     }
 
     if (url.pathname === "/_vinext/image") {

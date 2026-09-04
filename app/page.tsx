@@ -89,6 +89,23 @@ type InspectorDraft = {
 const cloneProject = (project: ForgeProject): ForgeProject =>
   JSON.parse(JSON.stringify(project)) as ForgeProject;
 
+function sourceLabel(project: ForgeProject) {
+  if (project.planner?.source === "workers-ai") return "Workers AI planner";
+  if (project.planner?.source === "semantic-fallback") return "Semantic fallback";
+  if (project.source === "procedural-concept") return "Procedural concept";
+  if (project.source === "procedural-vehicle") return "Vehicle generator";
+  if (project.source === "imported") return "Recovered import";
+  if (project.source === "emergency-fallback") return "Emergency fallback";
+  return "Recovered generator";
+}
+
+function generatedStatus(project: ForgeProject) {
+  if (project.planner?.source === "workers-ai") return `Forged “${project.name}” with Workers AI physical planning.`;
+  if (project.source === "procedural-concept") return `Forged a procedural concept for “${project.name}”.`;
+  if (project.source === "procedural-vehicle") return `Forged ${project.name} with the vehicle-specific generator.`;
+  return `Generated ${project.name} from the recovered ShapeForge library.`;
+}
+
 const emptyDraft: InspectorDraft = {
   name: "",
   category: "",
@@ -163,8 +180,8 @@ function PartsPanel({ project, selectedId, checks, onSelect, onAdd, onCopy, onUn
           </Badge>
         </div>
         <div className="source-row">
-          <span className={`source-dot ${project.source.startsWith("procedural-") ? "concept" : ""}`} />
-          {project.source === "procedural-concept" ? "Procedural concept" : project.source === "procedural-vehicle" ? "Vehicle generator" : project.source === "imported" ? "Recovered import" : "Recovered generator"}
+          <span className={`source-dot ${project.source.startsWith("procedural-") || project.source === "workers-ai" ? "concept" : ""}`} />
+          {sourceLabel(project)}
         </div>
       </section>
 
@@ -388,6 +405,7 @@ export default function Home() {
   const [showLabels, setShowLabels] = useState(false);
   const [showRelations, setShowRelations] = useState(false);
   const [status, setStatus] = useState("Recovered ShapeForge core loaded. Ready to forge.");
+  const [generating, setGenerating] = useState(false);
   const [editCommand, setEditCommand] = useState("make this larger");
   const [undoStack, setUndoStack] = useState<ForgeProject[]>([]);
   const [redoStack, setRedoStack] = useState<ForgeProject[]>([]);
@@ -429,9 +447,26 @@ export default function Home() {
     setStatus(event);
   };
 
-  const generate = (requestedPrompt = prompt, requestedScale = overallScale) => {
+  const generate = async (requestedPrompt = prompt, requestedScale = overallScale) => {
     const value = requestedPrompt.trim() || "A-72 bowling machine";
-    const next = createForgeProject(value, { scale: requestedScale / 100, detail });
+    setGenerating(true);
+    let next: ForgeProject;
+    try {
+      const response = await fetch("/api/forge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: value, scale: requestedScale / 100, detail }),
+      });
+      if (!response.ok) throw new Error(`Generation failed: ${response.status}`);
+      const body = await response.json() as { project?: ForgeProject };
+      if (!body.project) throw new Error("Generation response did not include a project.");
+      next = body.project;
+    } catch {
+      next = createForgeProject(value, { scale: requestedScale / 100, detail });
+      next.planner = { source: "semantic-fallback", warnings: ["Browser fell back to local planner after the server planner was unavailable."] };
+    } finally {
+      setGenerating(false);
+    }
     setUndoStack((stack) => [...stack.slice(-19), cloneProject(project)]);
     setRedoStack([]);
     setProject(next);
@@ -440,7 +475,7 @@ export default function Home() {
     setPrompt(value);
     setExplode(0);
     setShowRelations(false);
-    setStatus(next.source === "procedural-concept" ? `Forged a procedural concept for “${next.name}”.` : next.source === "procedural-vehicle" ? `Forged ${next.name} with the vehicle-specific generator.` : `Generated ${next.name} from the recovered ShapeForge library.`);
+    setStatus(generatedStatus(next));
     setFitSignal((value) => value + 1);
   };
 
@@ -699,7 +734,7 @@ export default function Home() {
             aria-label="Describe an object to generate"
             placeholder="Describe anything to forge…"
           />
-          <Button className="generate-button" onClick={() => generate()}><Hexagon /> Generate</Button>
+          <Button className="generate-button" onClick={() => generate()} disabled={generating}><Hexagon /> {generating ? "Planning…" : "Generate"}</Button>
           <Button variant="ghost" size="icon" aria-label="Generate a random recovered example" title="Surprise me" onClick={randomize}><Shuffle /></Button>
         </div>
         <div className="generator-settings">

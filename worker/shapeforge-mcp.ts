@@ -1,7 +1,10 @@
-import { createForgeProject, type ForgeProject } from "../lib/shapeforge.ts";
+import { type ForgeProject } from "../lib/shapeforge.ts";
+import { createForgeProjectWithPlanner, type WorkersAIBinding } from "./geometry-planner.ts";
 
 interface Env {
+  AI?: WorkersAIBinding;
   DB?: D1Database;
+  SHAPEFORGE_AI_MODEL?: string;
 }
 
 type JsonRpcRequest = {
@@ -43,7 +46,10 @@ function summarize(record: AssemblyRecord) {
     updated_at: record.updated_at,
     part_count: record.project.parts.length,
     source: record.project.source,
-    warning: "Stylized procedural assembly, not engineering-accurate CAD or guaranteed model-year geometry.",
+    planner: record.project.planner,
+    warning: record.project.source === "workers-ai"
+      ? "Generated from a validated Workers AI physical-object plan; dimensions and engineering validity are not verified."
+      : "Stylized procedural assembly, not engineering-accurate CAD or guaranteed model-year geometry.",
   };
 }
 
@@ -184,7 +190,7 @@ async function callTool(env: Env, name: string, args: Record<string, unknown> = 
       if (!prompt) return toolError("INVALID_INPUT", "Provide a prompt.");
       const detail = args.detail === "basic" ? "basic" : "detailed";
       const scale = typeof args.scale === "number" ? args.scale : undefined;
-      const project = createForgeProject(prompt, { detail, scale });
+      const project = await createForgeProjectWithPlanner(prompt, env, { detail, scale });
       project.id = projectId();
       if (typeof args.name === "string" && args.name.trim()) project.name = args.name.trim();
       const record = { project, revision: 1, updated_at: new Date().toISOString() };
