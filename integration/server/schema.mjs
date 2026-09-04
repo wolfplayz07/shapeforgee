@@ -73,7 +73,7 @@ export function summary(record) {
     id: p.id, name: p.name, revision: record.revision,
     updated_at: record.updated_at, part_count: p.parts.length, source: p.source,
     warning: p.source === "procedural-concept"
-      ? "Unsupported prompt: this is a generic placeholder, not a faithful model. Use save_assembly with explicitly designed parts for a custom project."
+      ? "Generated semantic concept from inferred components; dimensions and engineering validity are not verified."
       : p.source === "imported"
         ? "Custom concept assembled from supplied primitives; dimensions and engineering validity are not verified."
         : "Stylized procedural assembly, not engineering-accurate CAD or guaranteed model-year geometry.",

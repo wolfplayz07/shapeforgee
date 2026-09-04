@@ -23,10 +23,12 @@ test("widget rejects stale revisions and late responses from another project", (
   assert.equal(acceptRecord(current, other, true), other);
   assert.equal(acceptRecord(current, readRecord(envelope(4))).revision, 4);
 });
-test("viewer build is a self-contained HTML resource", () => {
+test("viewer build is a self-contained HTML resource without a demo-project fallback", () => {
   const html = widgetHtml();
   assert.match(html, /<!doctype html>/);
   assert.match(html, /SHAPEFORGE/);
+  assert.match(html, /demo projects are never substituted/);
+  assert.doesNotMatch(html, /Preview only — this sample is not saved/);
   assert.doesNotMatch(html, /<script[^>]+src=/);
   assert.doesNotMatch(html, /<link[^>]+href=/);
 });

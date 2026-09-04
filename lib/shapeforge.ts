@@ -1,4 +1,4 @@
-export * from "./shapeforge-core";
+export * from "./shapeforge-core.ts";
 
 import {
   createForgeProject as createCoreForgeProject,
@@ -9,7 +9,7 @@ import {
   type ForgeProject,
   type PrimitiveKind,
   type Vec3,
-} from "./shapeforge-core";
+} from "./shapeforge-core.ts";
 
 interface EverydaySpec {
   key: string;

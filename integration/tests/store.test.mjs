@@ -53,7 +53,35 @@ test("retrieval refuses a stored document whose embedded project ID does not mat
   const second = create(store, "flatscreen TV");
   const firstSequence = Number(first.project.id.slice(5));
   store.db.prepare("UPDATE assemblies SET document = ? WHERE sequence = ?").run(JSON.stringify(second.project), firstSequence);
-  assert.throws(() => store.get({ id: first.project.id }), { code: "PROJECT_ID_MISMATCH" });
+  assert.throws(() => store.get({ id: first.project.id }), { code: "IDENTITY_MISMATCH" });
+});
+test("create stores flatscreen TV under the exact returned ID", t => {
+  const store = memory(t);
+  const created = create(store, "flatscreen TV");
+  const fetched = store.get({ id: created.project.id });
+  assert.equal(created.project.name, "Television");
+  assert.equal(created.project.prompt, "flatscreen TV");
+  assert.equal(fetched.project.id, created.project.id);
+  assert.equal(fetched.project.name, "Television");
+  assert.equal(fetched.project.prompt, "flatscreen TV");
+  assert.deepEqual(fetched.project, created.project);
+});
+test("get refuses a persisted document whose identity does not match the requested project ID", t => {
+  const store = memory(t);
+  const tv = create(store, "flatscreen TV");
+  const wrong = createForgeProject("1969 Mustang");
+  wrong.id = "PROJ-999999";
+  store.db.prepare("UPDATE assemblies SET document = ? WHERE project_id = ?").run(JSON.stringify(wrong), tv.project.id);
+  assert.throws(() => store.get({ id: tv.project.id }), { code: "IDENTITY_MISMATCH" });
+});
+test("request retries reject cached projects that no longer match persisted identity", t => {
+  const store = memory(t);
+  const request = { request_id: randomUUID(), prompt: "flatscreen TV" };
+  const tv = store.create(request);
+  const substituted = createForgeProject("1969 SS Chevelle");
+  substituted.id = tv.project.id;
+  store.db.prepare("UPDATE assemblies SET name = ?, document = ? WHERE project_id = ?").run(substituted.name, JSON.stringify(substituted), tv.project.id);
+  assert.throws(() => store.create(request), { code: "IDENTITY_MISMATCH" });
 });
 test("SQLite survives restart, including request retry records", t => {
   const folder = mkdtempSync(join(tmpdir(), "shapeforge-store-test-"));
@@ -119,8 +147,8 @@ test("missing IDs, empty patches, unsafe fields, and out-of-bounds inputs fail",
   assert.throws(() => store.update({ ...base, changes: { size: [0, 1, 1] } }));
   assert.throws(() => create(store, "desk", { scale: 100 }));
 });
-test("unsupported prompts are explicitly labeled placeholders", t => {
+test("unknown prompts are explicitly labeled inferred semantic concepts", t => {
   const saved = create(memory(t), "a quantum banana observatory");
   assert.equal(saved.project.source, "procedural-concept");
-  assert.match(summary(saved).warning, /generic placeholder/);
+  assert.match(summary(saved).warning, /semantic concept/);
 });

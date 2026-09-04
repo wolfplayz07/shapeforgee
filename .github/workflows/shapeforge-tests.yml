@@ -1,0 +1,32 @@
+name: ShapeForge Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integration
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.18.0"
+          cache: npm
+          cache-dependency-path: integration/package-lock.json
+
+      - name: Install integration dependencies
+        run: npm ci
+
+      - name: Run ShapeForge integration checks
+        run: npm run check

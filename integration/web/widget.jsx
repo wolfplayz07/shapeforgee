@@ -2,12 +2,11 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "@modelcontextprotocol/ext-apps";
 import { ForgeCanvas } from "../../components/forge-canvas";
-import { createForgeProject } from "../../lib/shapeforge";
 import { acceptRecord, readRecord } from "./state.mjs";
 
 const standalone = window.parent === window;
 function Widget() {
-  const [record, setRecord] = useState(() => standalone ? { project: createForgeProject("1969 Mustang"), revision: 1, warning: "Preview only — this sample is not saved. Connect the MCP server to work on saved projects." } : null);
+  const [record, setRecord] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [explode, setExplode] = useState(0);
   const [labels, setLabels] = useState(false);
@@ -63,7 +62,7 @@ function Widget() {
   return <main>
     <header><strong>⬡ SHAPEFORGE</strong><span>{standalone ? "LOCAL PREVIEW" : connected ? "CONNECTED" : "CONNECTING"}</span></header>
     {error && <div role="alert" className="error">{error} {record && connected && <button disabled={busy} onClick={() => void call("get_assembly", { id: record.project.id })}>Refresh assembly</button>}</div>}
-    {!record ? <section className="waiting">{error ? "The assembly could not be opened." : "Waiting for a saved assembly…"}<p>Use open_assembly with a saved project ID.</p></section> : <>
+    {!record ? <section className="waiting">{standalone ? "No saved assembly is loaded in the standalone preview." : error ? "The assembly could not be opened." : "Waiting for a saved assembly…"}<p>{standalone ? "Open a saved project through the ShapeForge MCP connection; demo projects are never substituted." : "Use open_assembly with a saved project ID."}</p></section> : <>
       <section className="heading"><div><h1>{record.project.name}</h1><small>{record.project.id} · Revision {record.revision} · {record.project.parts.length} parts</small></div><button disabled={!connected || busy} onClick={() => void call("get_assembly", { id: record.project.id })}>Refresh</button></section>
       <div className="toolbar"><button onClick={() => setFit(value => value + 1)}>Fit</button><button onClick={() => setReset(value => value + 1)}>Reset view</button><label><input type="checkbox" checked={labels} onChange={event => setLabels(event.target.checked)} /> Labels</label><label><input type="checkbox" checked={relations} onChange={event => setRelations(event.target.checked)} /> Relations</label></div>
       <div className="workspace"><div className="viewport"><ForgeCanvas project={record.project} selectedId={selectedId} explode={explode} showLabels={labels} showRelations={relations} fitSignal={fit} resetSignal={reset} onSelect={select} /></div>

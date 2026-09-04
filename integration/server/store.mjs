@@ -11,6 +11,29 @@ function canonical(value) {
   return value;
 }
 
+function canonicalJson(value) {
+  return JSON.stringify(canonical(value));
+}
+
+function loadProjectById(db, id) {
+  const row = db.prepare("SELECT document FROM assemblies WHERE project_id = ?").get(id);
+  if (!row) return null;
+  const project = JSON.parse(row.document);
+  if (project.id !== id) throw new AssemblyError("IDENTITY_MISMATCH", "The saved assembly identity is inconsistent. ShapeForge will not substitute a different project for this ID.");
+  return project;
+}
+
+function assertStoredProjectMatches(db, project, code, message) {
+  if (!project?.id) return;
+  const persisted = loadProjectById(db, project.id);
+  if (!persisted) throw new AssemblyError(code, message);
+  if (canonicalJson(persisted) !== canonicalJson(project)) {
+    throw new AssemblyError("IDENTITY_MISMATCH", "The returned assembly does not match the project stored under its ID. ShapeForge will not substitute a different project.");
+  }
+}
+
+const projectIdForSequence = sequence => `PROJ-${String(sequence).padStart(6, "0")}`;
+
 export class AssemblyStore {
   constructor(filename) {
     if (filename !== ":memory:") mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -18,10 +41,11 @@ export class AssemblyStore {
     if (filename !== ":memory:") chmodSync(filename, 0o600);
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
     const version = this.db.prepare("PRAGMA user_version").get().user_version;
-    if (version > 1) { this.db.close(); throw new Error("Assembly database was created by a newer ShapeForge version."); }
+    if (version > 2) { this.db.close(); throw new Error("Assembly database was created by a newer ShapeForge version."); }
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS assemblies (
         sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id TEXT,
         name TEXT NOT NULL, updated_at TEXT NOT NULL, revision INTEGER NOT NULL,
         document TEXT NOT NULL
       );
@@ -33,8 +57,30 @@ export class AssemblyStore {
       CREATE TABLE IF NOT EXISTS requests (
         request_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, response TEXT NOT NULL
       );
-      PRAGMA user_version = 1;
     `);
+    const columns = this.db.prepare("PRAGMA table_info(assemblies)").all();
+    if (!columns.some(column => column.name === "project_id")) this.db.exec("ALTER TABLE assemblies ADD COLUMN project_id TEXT");
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      if (version < 2) {
+        const assignId = this.db.prepare("UPDATE assemblies SET project_id = ? WHERE sequence = ?");
+        for (const row of this.db.prepare("SELECT sequence, document FROM assemblies WHERE project_id IS NULL").all()) {
+          const expectedId = projectIdForSequence(Number(row.sequence));
+          try {
+            const project = JSON.parse(row.document);
+            if (project?.id === expectedId) assignId.run(expectedId, row.sequence);
+          } catch {
+            // Leave malformed or mismatched legacy rows unaddressable instead of binding them to the wrong ID.
+          }
+        }
+      }
+      this.db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS assemblies_project_id_idx
+        ON assemblies(project_id) WHERE project_id IS NOT NULL;
+        PRAGMA user_version = 2;
+      `);
+      this.db.exec("COMMIT");
+    } catch (error) { this.db.exec("ROLLBACK"); this.db.close(); throw error; }
   }
   close() { this.db.close(); }
   mutate(operation, input, action) {
@@ -44,10 +90,13 @@ export class AssemblyStore {
       const previous = this.db.prepare("SELECT fingerprint, response FROM requests WHERE request_id = ?").get(input.request_id);
       if (previous) {
         if (previous.fingerprint !== fingerprint) throw new AssemblyError("REQUEST_ID_REUSED", "This request_id was already used for different input. Use a new UUID for a new action.");
+        const cached = JSON.parse(previous.response);
+        assertStoredProjectMatches(this.db, cached?.project, "REQUEST_ORPHANED", "The saved result for this request no longer has a matching assembly. Use a new request_id.");
         this.db.exec("COMMIT");
-        return JSON.parse(previous.response);
+        return cached;
       }
       const result = JSON.parse(JSON.stringify(action()));
+      assertStoredProjectMatches(this.db, result?.project, "PERSISTENCE_FAILURE", "The assembly was not stored under the ID returned by ShapeForge.");
       this.db.prepare("INSERT INTO requests VALUES (?, ?, ?)").run(input.request_id, fingerprint, JSON.stringify(result));
       this.db.exec("COMMIT");
       return result;
@@ -55,14 +104,15 @@ export class AssemblyStore {
   }
   insert(project) {
     const updated_at = new Date().toISOString();
-    const row = this.db.prepare("INSERT INTO assemblies (name, updated_at, revision, document) VALUES (?, ?, 1, '{}')").run(project.name, updated_at);
+    const row = this.db.prepare("INSERT INTO assemblies (project_id, name, updated_at, revision, document) VALUES (NULL, ?, ?, 1, '{}')").run(project.name, updated_at);
     const sequence = Number(row.lastInsertRowid);
     if (sequence > 999999) throw new AssemblyError("CAPACITY", "The prototype's assembly ID capacity has been reached.");
-    project.id = `PROJ-${String(sequence).padStart(6, "0")}`;
+    project.id = projectIdForSequence(sequence);
     validate(project);
     const document = JSON.stringify(project);
-    this.db.prepare("UPDATE assemblies SET document = ? WHERE sequence = ?").run(document, sequence);
+    this.db.prepare("UPDATE assemblies SET project_id = ?, document = ? WHERE sequence = ?").run(project.id, document, sequence);
     this.db.prepare("INSERT INTO revisions VALUES (?, 1, ?, ?)").run(sequence, updated_at, document);
+    assertStoredProjectMatches(this.db, project, "PERSISTENCE_FAILURE", "The assembly could not be stored under its returned project ID.");
     return { project, revision: 1, updated_at };
   }
   create(raw) {
@@ -87,24 +137,24 @@ export class AssemblyStore {
   }
   get(raw) {
     const { id, revision } = getSchema.parse(raw);
-    const sequence = Number(id.slice(5));
     const row = revision
-      ? this.db.prepare("SELECT document, revision, updated_at FROM revisions WHERE assembly_sequence = ? AND revision = ?").get(sequence, revision)
-      : this.db.prepare("SELECT document, revision, updated_at FROM assemblies WHERE sequence = ?").get(sequence);
+      ? this.db.prepare("SELECT r.document, r.revision, r.updated_at FROM revisions r JOIN assemblies a ON a.sequence = r.assembly_sequence WHERE a.project_id = ? AND r.revision = ?").get(id, revision)
+      : this.db.prepare("SELECT document, revision, updated_at FROM assemblies WHERE project_id = ?").get(id);
     if (!row) throw new AssemblyError("NOT_FOUND", "That assembly or revision does not exist. Use list_assemblies to find saved IDs.");
     const project = JSON.parse(row.document);
-    // Never allow a sequence lookup to substitute a document belonging to another
-    // project ID. This turns stale/corrupt/mixed stores into an explicit failure
-    // instead of opening an unrelated older assembly.
-    if (project.id !== id) throw new AssemblyError("PROJECT_ID_MISMATCH", `Stored assembly identity mismatch for ${id}; refusing to substitute ${project.id || "an unidentified project"}.`);
+    if (project.id !== id) throw new AssemblyError("IDENTITY_MISMATCH", "The saved assembly identity is inconsistent. ShapeForge will not substitute a different project for this ID.");
     return { project, revision: row.revision, updated_at: row.updated_at };
   }
   list(raw = {}) {
     const { query, limit, offset } = listSchema.parse(raw);
     const match = `%${query.replace(/[\\%_]/g, c => `\\${c}`)}%`;
-    const rows = this.db.prepare("SELECT document, revision, updated_at FROM assemblies WHERE name LIKE ? ESCAPE '\\' ORDER BY updated_at DESC, sequence DESC LIMIT ? OFFSET ?").all(match, limit + 1, offset);
+    const rows = this.db.prepare("SELECT project_id, document, revision, updated_at FROM assemblies WHERE project_id IS NOT NULL AND name LIKE ? ESCAPE '\\' ORDER BY updated_at DESC, sequence DESC LIMIT ? OFFSET ?").all(match, limit + 1, offset);
     return {
-      assemblies: rows.slice(0, limit).map(row => summary({ ...row, project: JSON.parse(row.document) })),
+      assemblies: rows.slice(0, limit).map(row => {
+        const project = JSON.parse(row.document);
+        if (project.id !== row.project_id) throw new AssemblyError("IDENTITY_MISMATCH", "A saved assembly has inconsistent identity data and will not be substituted.");
+        return summary({ ...row, project });
+      }),
       next_offset: rows.length > limit ? offset + limit : null,
     };
   }
@@ -122,10 +172,11 @@ export class AssemblyStore {
       validate(project);
       const revision = current.revision + 1;
       const updated_at = new Date().toISOString();
-      const sequence = Number(input.id.slice(5));
+      const identity = this.db.prepare("SELECT sequence FROM assemblies WHERE project_id = ?").get(input.id);
+      if (!identity) throw new AssemblyError("NOT_FOUND", "That assembly does not exist.");
       const document = JSON.stringify(project);
-      this.db.prepare("UPDATE assemblies SET document = ?, revision = ?, updated_at = ? WHERE sequence = ?").run(document, revision, updated_at, sequence);
-      this.db.prepare("INSERT INTO revisions VALUES (?, ?, ?, ?)").run(sequence, revision, updated_at, document);
+      this.db.prepare("UPDATE assemblies SET document = ?, revision = ?, updated_at = ? WHERE project_id = ?").run(document, revision, updated_at, input.id);
+      this.db.prepare("INSERT INTO revisions VALUES (?, ?, ?, ?)").run(identity.sequence, revision, updated_at, document);
       return { project, revision, updated_at };
     });
   }
