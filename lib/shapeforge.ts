@@ -417,25 +417,60 @@ function windowAcSpecs(prompt: string): EverydaySpec[] {
   ];
 }
 
+function isCordedPrompt(prompt: string) {
+  return /\b(corded|corded\s+electric|plug[- ]?in|mains powered|power cord|with a cord)\b/i.test(prompt);
+}
+
+function isCordlessPrompt(prompt: string) {
+  return /\b(cordless|battery[- ]?powered|battery pack|rechargeable)\b/i.test(prompt) && !isCordedPrompt(prompt);
+}
+
 function drillSpecs(prompt: string): EverydaySpec[] {
   const body = colorFromPrompt(prompt, "#d2a237");
   const dark = "#2d3338";
   const metal = "#aeb8c0";
-  return [
+  const corded = isCordedPrompt(prompt);
+  const cordless = isCordlessPrompt(prompt);
+  const powerKeys = corded ? ["cordRelief"] : cordless ? ["batteryPack"] : ["powerInlet"];
+  const specs: EverydaySpec[] = [
     box("housing", "Drill Motor Housing", undefined, "housing", addSpatial("Contains the motor and gears in a pistol-shaped body.", "above the handle and behind the chuck"), [-12, 8, 0], [102, 48, 46], [0, 70, 0], body, { rotation: [0, 0, -6], relatedKeys: ["gearbox", "handle"] }),
     cylinder("gearbox", "Front Gearbox Collar", "housing", "motion", addSpatial("Steps motor speed down before the chuck.", "concentric with the chuck at the front of the housing"), [49, 10, 0], [34, 38, 38], [93, 42, 0], metal, "x", { rotation: [0, 0, -6], relatedKeys: ["chuck", "motor"] }),
     cylinder("chuck", "Keyless Chuck", "gearbox", "output", addSpatial("Clamps the drill bit at the working end.", "attached to the front of the gearbox and coaxial with the bit"), [82, 10, 0], [37, 24, 24], [158, 24, 0], dark, "x", { rotation: [0, 0, -6], relatedKeys: ["bit"] }),
     cylinder("bit", "Drill Bit", "chuck", "output", addSpatial("Represents the removable cutting tool.", "projecting forward from the chuck"), [119, 10, 0], [50, 6, 6], [220, 12, 0], metal, "x", { rotation: [0, 0, -6], detail: true }),
-    cylinder("motor", "Electric Motor", "housing", "power", addSpatial("Provides rotary drive for drilling.", "inside the rear housing and connected to the gearbox"), [-18, 8, 0], [48, 28, 28], [-54, 18, 0], "#59646c", "x", { relatedKeys: ["gearbox", "batteryPack"], detail: true }),
-    box("handle", "Angled Grip Handle", "housing", "support", addSpatial("Positions the hand below the motor body.", "below and slightly behind the housing"), [-32, -46, 0], [34, 84, 38], [-38, -106, 0], body, { rotation: [0, 0, 16], relatedKeys: ["trigger", "batteryPack"] }),
+    cylinder("motor", "Electric Motor", "housing", "power", addSpatial("Provides rotary drive for drilling.", "inside the rear housing and connected to the gearbox"), [-18, 8, 0], [48, 28, 28], [-54, 18, 0], "#59646c", "x", { relatedKeys: ["gearbox", ...powerKeys], detail: true }),
+    box("handle", "Angled Grip Handle", "housing", "support", addSpatial("Positions the hand below the motor body.", "below and slightly behind the housing"), [-32, -46, 0], [34, 84, 38], [-38, -106, 0], body, { rotation: [0, 0, 16], relatedKeys: ["trigger", ...powerKeys] }),
     box("trigger", "Variable-Speed Trigger", "handle", "control", addSpatial("Controls motor speed with finger pressure.", "inside the front of the handle, below the housing"), [-7, -27, 0], [13, 25, 16], [14, -46, 50], dark, { rotation: [0, 0, 11], relatedKeys: ["motor"] }),
-    box("batteryPack", "Slide-On Battery Pack", "handle", "power", addSpatial("Supplies removable cordless power.", "attached below the handle as the lowest mass"), [-30, -101, 0], [61, 31, 54], [-30, -176, 0], dark, { relatedKeys: ["handle", "motor"] }),
     box("vent", "Cooling Vents", "housing", "thermal", addSpatial("Lets motor heat escape.", "on the side wall beside the hidden motor"), [3, 12, -26], [34, 16, 4], [24, 42, -58], "#22282d", { detail: true }),
   ];
+  if (corded) {
+    specs.push(
+      box("cordRelief", "Cord Strain Relief", "handle", "electrical", addSpatial("Protects the mains cable where it enters the drill.", "attached to the bottom rear of the handle and connected to the motor wiring"), [-48, -86, -1], [18, 22, 20], [-80, -150, -25], dark, { relatedKeys: ["cord", "motor"] }),
+      cylinder("cord", "Power Cord", "cordRelief", "electrical", addSpatial("Carries external electrical power.", "trailing out behind the handle instead of attaching as a battery"), [-88, -102, -4], [92, 8, 8], [-168, -182, -30], "#171d22", "x", { rotation: [0, 0, -24], relatedKeys: ["plug"] }),
+      box("plug", "Two-Prong Plug", "cord", "electrical", addSpatial("Connects the corded drill to a wall outlet.", "at the free end of the power cord behind the tool"), [-136, -122, -4], [24, 18, 16], [-235, -215, -32], "#20272d", { relatedKeys: ["cord"], detail: true }),
+    );
+  } else if (cordless) {
+    specs.push(box("batteryPack", "Slide-On Battery Pack", "handle", "power", addSpatial("Supplies removable cordless power.", "attached below the handle as the lowest mass"), [-30, -101, 0], [61, 31, 54], [-30, -176, 0], dark, { relatedKeys: ["handle", "motor"] }));
+  } else {
+    specs.push(box("powerInlet", "Power Inlet Module", "handle", "electrical", addSpatial("Represents the electrical feed for the drill.", "inside the handle base and connected to the motor"), [-35, -95, 0], [42, 20, 36], [-44, -164, 0], dark, { relatedKeys: ["handle", "motor"], detail: true }));
+  }
+  return specs;
 }
 
 function coffeeMakerSpecs(prompt: string): EverydaySpec[] {
   const body = colorFromPrompt(prompt, "#48545d");
+  if (hasNegativeConstraint(prompt, /\b(normal|regular|drip|pot|pot of joe|carafe|glass carafe|warming plate|brew basket)\b/)) {
+    return [
+      box("body", "Sculpted Espresso Body", undefined, "housing", addSpatial("Forms a premium non-drip beverage appliance body.", "behind the group head and surrounding the pump and thermoblock"), [0, 10, 0], [112, 132, 76], [0, 70, -84], body, { relatedKeys: ["reservoir", "pump", "groupHead"] }),
+      box("reservoir", "Slim Water Reservoir", "body", "fluid", addSpatial("Stores brew water without using a carafe.", "inside the rear vertical body behind the thermoblock"), [-39, 30, -15], [34, 82, 42], [-92, 68, -52], "#7fa9be", { relatedKeys: ["pump", "thermoblock"] }),
+      cylinder("pump", "Pressure Pump", "body", "fluid", addSpatial("Pressurizes water for espresso-style extraction.", "low inside the body and connected between reservoir and thermoblock"), [-28, -36, -6], [48, 24, 24], [-88, -88, -18], "#56636b", "x", { relatedKeys: ["reservoir", "thermoblock"] }),
+      cylinder("thermoblock", "Thermoblock Heater", "body", "thermal", addSpatial("Heats pressurized water on demand.", "inside the center body above the pump and before the group head"), [8, -13, 1], [52, 18, 18], [20, -58, 20], "#b77442", "x", { relatedKeys: ["pump", "groupHead"], detail: true }),
+      cylinder("groupHead", "Portafilter Group Head", "body", "output", addSpatial("Delivers coffee directly into a cup.", "projecting from the front face above the cup tray"), [38, 7, 45], [42, 28, 28], [104, 18, 104], "#c0c9cf", "z", { relatedKeys: ["portafilter", "cupTray"] }),
+      box("portafilter", "Portafilter Handle", "groupHead", "input", addSpatial("Holds grounds at the brew outlet.", "locked under the group head and extending forward"), [53, -8, 64], [62, 12, 16], [138, -15, 142], "#2f363b", { relatedKeys: ["groupHead"] }),
+      cylinder("steamWand", "Steam Wand", "body", "output", addSpatial("Froths milk beside the brew outlet.", "attached to the front side and hanging below the control panel"), [-42, 2, 47], [64, 7, 7], [-106, 10, 110], "#c0c9cf", "y", { rotation: [0, 0, -18], relatedKeys: ["thermoblock"] }),
+      box("cupTray", "Perforated Cup Tray", "body", "support", addSpatial("Supports a cup directly under the group head.", "on the lower front base below the portafilter"), [26, -61, 47], [82, 10, 52], [66, -132, 110], "#20272c", { relatedKeys: ["groupHead"] }),
+      box("controlPanel", "Brew Mode Controls", "body", "control", addSpatial("Selects extraction and steam modes.", "on the upper front face above the group head"), [-18, 45, 43], [62, 23, 7], [-52, 104, 96], "#3d7795", { relatedKeys: ["pump"], detail: true }),
+    ];
+  }
   return [
     box("housing", "Countertop Brewer Housing", undefined, "housing", addSpatial("Forms the upright body of the coffee maker.", "behind the carafe and surrounding the heating and water path"), [0, 14, 0], [118, 142, 78], [0, 70, -86], body, { relatedKeys: ["reservoir", "brewBasket", "warmingPlate"] }),
     box("reservoir", "Water Reservoir", "housing", "fluid", addSpatial("Stores incoming water before brewing.", "inside the rear upper housing above the heater tube"), [-33, 42, -12], [42, 76, 46], [-85, 82, -50], "#7fa9be", { relatedKeys: ["heater", "brewBasket"] }),
@@ -446,6 +481,139 @@ function coffeeMakerSpecs(prompt: string): EverydaySpec[] {
     box("carafe", "Glass Carafe", "warmingPlate", "vessel", addSpatial("Collects brewed coffee.", "outside the front housing, sitting on the warming plate"), [22, -17, 47], [70, 62, 52], [82, -28, 122], "#adc8d4", { relatedKeys: ["handle", "dripSpout"] }),
     box("handle", "Carafe Handle", "carafe", "support", addSpatial("Provides a grip for pouring.", "attached to the outside right side of the carafe"), [63, -17, 47], [18, 48, 14], [134, -18, 118], "#2f363b", { relatedKeys: ["carafe"] }),
     box("controlPanel", "Brew Control Panel", "housing", "control", addSpatial("Houses buttons and indicators.", "on the front face beside the brew basket"), [-31, 3, 43], [38, 24, 7], [-70, 5, 96], "#3d7795", { detail: true }),
+  ];
+}
+
+function negativeText(prompt: string) {
+  const matches = prompt.toLowerCase().match(/\b(?:not|without|no|instead of)\b[^,.;]*/g);
+  return matches?.join(" ") ?? "";
+}
+
+function hasNegativeConstraint(prompt: string, pattern: RegExp) {
+  return pattern.test(negativeText(prompt));
+}
+
+type SemanticFamily =
+  | "thermalAppliance"
+  | "poweredHandTool"
+  | "beverageAppliance"
+  | "printer"
+  | "pump"
+  | "blender"
+  | "pairedWearable"
+  | "elongatedHandTool"
+  | "mechanicalSubassembly"
+  | "lightingFixture"
+  | "loopObject"
+  | "genericAssembly";
+
+interface SemanticPlan {
+  family: SemanticFamily;
+  name: string;
+  subject: string;
+  corePrompt?: string;
+}
+
+function semanticPlan(prompt: string): SemanticPlan {
+  const value = prompt.toLowerCase();
+  const title = titleFromPrompt(prompt);
+  if (/\b(window|room|portable)?\s*(unit\s*)?(air\s*conditioner|ac\b|a\/c|hvac)\b/.test(value)) return { family: "thermalAppliance", name: title, subject: "air conditioner" };
+  if (/\b(cordless\s*)?(drill|driver|power\s*drill)\b/.test(value)) return { family: "poweredHandTool", name: title, subject: "drill" };
+  if (/\b(coffee\s*maker|coffee\s*machine|espresso|brewer|drip\s*coffee)\b/.test(value)) return { family: "beverageAppliance", name: title, subject: "coffee maker" };
+  if (/\b(desktop\s*)?(printer|scanner\s*printer|inkjet|laser\s*printer)\b/.test(value)) return { family: "printer", name: title, subject: "printer" };
+  if (/\b(blender|food\s*processor|smoothie\s*maker)\b/.test(value)) return { family: "blender", name: title, subject: "blender" };
+  if (/\b(bicycle|bike)?\s*(pump|floor\s*pump|tire\s*pump)|drain\s+pump|water\s+pump|fuel\s+pump\b/.test(value)) return { family: "pump", name: title, subject: "pump" };
+  if (/\b(transmission|gearbox|differential|clutch|reducer|drive\s+unit|motor\s+assembly|pump\s+assembly|valve\s+body)\b/.test(value)) return { family: "mechanicalSubassembly", name: title, subject: "subassembly" };
+  if (/\b(eye\s*glasses|eyeglasses|spectacles|sunglasses|goggles|glasses)\b/.test(value)) return { family: "pairedWearable", name: title, subject: "eyewear" };
+  if (/\b(wrench|spanner|screwdriver|ratchet|chisel|file|scraper|pry\s*bar|hand\s+tool)\b/.test(value)) return { family: "elongatedHandTool", name: title, subject: "hand tool" };
+  if (/\b(lamp|light|sconce|lantern)\b/.test(value)) return { family: "lightingFixture", name: title, subject: "lamp", corePrompt: "lamp" };
+  if (/\b(hoop|ring|loop|gasket|bracelet)\b/.test(value)) return { family: "loopObject", name: title, subject: "loop" };
+  return { family: "genericAssembly", name: title, subject: title.toLowerCase() };
+}
+
+function eyewearSpecs(prompt: string): EverydaySpec[] {
+  const frame = colorFromPrompt(prompt, "#30353a");
+  const lens = /sunglasses|tinted|dark/i.test(prompt) ? "#59666f" : "#a8c7d6";
+  return [
+    cylinder("leftLens", "Left Lens", undefined, "output", addSpatial("Provides the left optical surface.", "left of the bridge and matching the right lens bilaterally"), [-43, 5, 0], [52, 34, 5], [-96, 18, 0], lens, "z", { relatedKeys: ["bridge", "leftRim"] }),
+    cylinder("rightLens", "Right Lens", undefined, "output", addSpatial("Provides the right optical surface.", "right of the bridge and matching the left lens bilaterally"), [43, 5, 0], [52, 34, 5], [96, 18, 0], lens, "z", { relatedKeys: ["bridge", "rightRim"] }),
+    cylinder("leftRim", "Left Rim", "leftLens", "structure", addSpatial("Frames and protects the left lens.", "surrounding the left lens on the outside edge"), [-43, 5, -1], [62, 42, 6], [-118, 42, -15], frame, "z", { relatedKeys: ["leftLens", "bridge"] }),
+    cylinder("rightRim", "Right Rim", "rightLens", "structure", addSpatial("Frames and protects the right lens.", "surrounding the right lens on the outside edge"), [43, 5, -1], [62, 42, 6], [118, 42, -15], frame, "z", { relatedKeys: ["rightLens", "bridge"] }),
+    box("bridge", "Nose Bridge", undefined, "support", addSpatial("Joins the two lens rims.", "centered between left and right lenses above the nose pads"), [0, 5, 0], [26, 9, 8], [0, 56, 0], frame, { relatedKeys: ["leftRim", "rightRim", "nosePads"] }),
+    box("leftTemple", "Left Temple Arm", "leftRim", "support", addSpatial("Holds the frame on the left ear.", "hinged to the outside of the left rim and extending backward"), [-82, 3, -43], [78, 7, 8], [-175, 4, -86], frame, { rotation: [0, -18, 0], relatedKeys: ["leftRim"] }),
+    box("rightTemple", "Right Temple Arm", "rightRim", "support", addSpatial("Holds the frame on the right ear.", "hinged to the outside of the right rim and extending backward"), [82, 3, -43], [78, 7, 8], [175, 4, -86], frame, { rotation: [0, 18, 0], relatedKeys: ["rightRim"] }),
+    box("nosePads", "Paired Nose Pads", "bridge", "support", addSpatial("Rest the glasses on the nose.", "below the bridge and between both lenses"), [0, -17, 6], [22, 12, 6], [0, -62, 42], "#d6dde1", { relatedKeys: ["bridge"], detail: true }),
+  ];
+}
+
+function elongatedToolSpecs(prompt: string): EverydaySpec[] {
+  const metal = colorFromPrompt(prompt, "#9aa5ad");
+  const dark = "#30363c";
+  const isScrew = /\b(screwdriver|driver)\b/i.test(prompt);
+  return [
+    box("handle", isScrew ? "Long Grip Handle" : "Slim Handle Beam", undefined, "support", addSpatial("Creates the long hand-tool leverage body.", "between the working end and the rear end, much longer than it is tall"), [0, 0, 0], [178, 16, 18], [0, 0, 0], isScrew ? dark : metal, { relatedKeys: ["frontHead", "rearEnd"] }),
+    box("neck", "Tapered Neck", "handle", "structure", addSpatial("Narrows the handle into the working head.", "attached to the front of the elongated handle"), [88, 0, 0], [38, 12, 15], [126, 20, 0], metal, { relatedKeys: ["frontHead"] }),
+    cylinder("frontHead", isScrew ? "Driver Tip" : "Open Jaw Head", "neck", "output", addSpatial("Provides the primary working contact.", "at the front end of the tool, aligned with the handle"), [119, 0, 0], [42, isScrew ? 8 : 36, isScrew ? 8 : 13], [205, 32, 0], metal, "x", { relatedKeys: ["neck"] }),
+    cylinder("rearEnd", isScrew ? "Rear Cap" : "Box End Ring", "handle", "output", addSpatial("Adds a secondary working or hanging feature.", "at the rear end opposite the main head"), [-94, 0, 0], [32, isScrew ? 22 : 34, isScrew ? 22 : 8], [-175, -25, 0], metal, isScrew ? "x" : "z", { relatedKeys: ["handle"] }),
+    box("gripTexture", "Grip Texture Flats", "handle", "grip", addSpatial("Improves hand contact.", "on the upper and lower faces along the center handle"), [-18, 0, 11], [82, 4, 4], [-40, 34, 48], dark, { relatedKeys: ["handle"], detail: true }),
+  ];
+}
+
+function mechanicalSubassemblySpecs(prompt: string): EverydaySpec[] {
+  const value = prompt.toLowerCase();
+  const title = titleFromPrompt(prompt).replace(/\b(Car|Auto|Vehicle)\s+/i, "");
+  const casingName = /\b(transmission|gearbox|reducer)\b/.test(value) ? "Transmission Gear Case" : `${title} Housing`;
+  return [
+    box("case", casingName, undefined, "housing", addSpatial("Contains the requested mechanical subsystem only.", "surrounding internal shafts and gears without expanding into the parent machine"), [0, 0, 0], [118, 58, 74], [0, 0, -92], "#6b747c", { relatedKeys: ["inputShaft", "outputShaft", "gearCluster"] }),
+    cylinder("inputShaft", "Input Shaft", "case", "motion", addSpatial("Receives rotation from the upstream machine.", "projecting from the front-left side of the subsystem case"), [-68, 3, 0], [62, 12, 12], [-132, 12, 0], "#b5bec5", "x", { relatedKeys: ["gearCluster"] }),
+    cylinder("outputShaft", "Output Shaft", "case", "motion", addSpatial("Sends rotation out of the subsystem.", "projecting from the opposite side of the case and coaxial with the gear train"), [70, -2, 0], [68, 14, 14], [142, -6, 0], "#c0c8ce", "x", { relatedKeys: ["gearCluster"] }),
+    cylinder("gearCluster", "Gear Cluster", "case", "motion", addSpatial("Represents meshing reduction elements.", "inside the case between input and output shafts"), [0, 0, 2], [50, 48, 26], [0, 62, 26], "#d19a48", "z", { relatedKeys: ["inputShaft", "outputShaft"] }),
+    box("mountFlange", "Mounting Flange", "case", "support", addSpatial("Bolts the subsystem to its parent machine.", "around the outer case perimeter rather than forming the whole parent"), [0, -35, 0], [132, 12, 86], [0, -104, 0], "#505b64", { relatedKeys: ["case"] }),
+    box("sensorConnector", "Electrical Connector", "case", "control", addSpatial("Carries control or sensor signals.", "attached to the outside top of the case"), [-28, 36, 33], [34, 18, 16], [-78, 92, 68], "#2f7896", { relatedKeys: ["case"], detail: true }),
+  ];
+}
+
+function lightingFixtureSpecs(prompt: string): EverydaySpec[] {
+  const core = createCoreForgeProject("lamp");
+  return core.parts.map((part, index) => ({
+    key: part.id,
+    name: part.name,
+    kind: part.kind,
+    axis: part.axis,
+    parentKey: index === 0 ? undefined : core.parts.find((candidate) => candidate.id === part.parent)?.id,
+    category: part.category,
+    purpose: addSpatial(part.purpose, "arranged as a lamp fixture, not as furniture"),
+    position: part.position,
+    size: part.size,
+    rotation: part.rotation,
+    explode: part.explode,
+    relatedKeys: part.related,
+    color: part.color,
+  }));
+}
+
+function loopObjectSpecs(prompt: string): EverydaySpec[] {
+  const body = colorFromPrompt(prompt, "#667d8d");
+  const specs: EverydaySpec[] = [
+    cylinder("frontArc", "Front Curved Segment", undefined, "structure", addSpatial("Forms the front part of the circular silhouette.", "attached around the loop perimeter and concentric with the rear segment"), [0, 0, 58], [126, 9, 9], [0, 0, 142], body, "x", { relatedKeys: ["rearArc", "leftArc", "rightArc"] }),
+    cylinder("rearArc", "Rear Curved Segment", undefined, "structure", addSpatial("Forms the rear part of the circular silhouette.", "opposite the front segment around the loop perimeter"), [0, 0, -58], [126, 9, 9], [0, 0, -142], body, "x", { relatedKeys: ["frontArc"] }),
+    cylinder("leftArc", "Left Curved Segment", undefined, "structure", addSpatial("Completes the left side of the loop.", "connected between front and rear segments"), [-58, 0, 0], [126, 9, 9], [-142, 0, 0], body, "z", { relatedKeys: ["frontArc", "rearArc"] }),
+    cylinder("rightArc", "Right Curved Segment", undefined, "structure", addSpatial("Completes the right side of the loop.", "connected between front and rear segments"), [58, 0, 0], [126, 9, 9], [142, 0, 0], body, "z", { relatedKeys: ["frontArc", "rearArc"] }),
+    cylinder("surfaceMark", "Alignment Mark", "frontArc", "surface", addSpatial("Adds a small visible orientation detail.", "on the outside front segment"), [0, 8, 64], [26, 5, 5], [0, 44, 160], "#cbd4da", "x", { detail: true }),
+  ];
+  return specs;
+}
+
+function generalSemanticSpecs(prompt: string): EverydaySpec[] {
+  const name = titleFromPrompt(prompt);
+  const body = colorFromPrompt(prompt, "#6e7d88");
+  const lower = name.toLowerCase();
+  return [
+    box("primaryStructure", `${name} Primary Structure`, undefined, "structure", addSpatial(`Defines the main load path for the ${lower}.`, "scaled from the inferred subject rather than a universal outer box"), [0, 0, 0], [132, 38, 48], [0, 0, -82], body, { relatedKeys: ["workingCore", "interfaceA", "interfaceB"] }),
+    cylinder("workingCore", `${name} Working Core`, "primaryStructure", "motion", addSpatial(`Represents the central functional mechanism of the ${lower}.`, "inside or attached to the main structure according to the object's role"), [-16, 0, 0], [54, 26, 26], [-74, 12, 0], "#d19a48", "x", { relatedKeys: ["interfaceA", "interfaceB"] }),
+    box("interfaceA", `${name} Input Interface`, "primaryStructure", "input", addSpatial(`Shows where force, material, or user intent enters the ${lower}.`, "attached near one end of the primary structure"), [-68, 8, 28], [38, 22, 8], [-124, 42, 80], "#cbd4da", { relatedKeys: ["workingCore"] }),
+    box("interfaceB", `${name} Output Interface`, "primaryStructure", "output", addSpatial(`Shows where the ${lower} produces its result.`, "attached near the opposite end and connected from the core"), [66, -4, 28], [42, 24, 8], [126, -24, 82], "#b5c4cc", { relatedKeys: ["workingCore"] }),
+    box("serviceMount", `${name} Service Mount`, "primaryStructure", "fastener", addSpatial(`Provides attachment or service access for the ${lower}.`, "on the outside surface near a structural edge"), [0, -26, 0], [74, 9, 34], [0, -86, 0], "#424c55", { relatedKeys: ["primaryStructure"], detail: true }),
   ];
 }
 
@@ -493,52 +661,61 @@ function blenderSpecs(prompt: string): EverydaySpec[] {
   ];
 }
 
-function defaultUnknownSpecs(prompt: string): EverydaySpec[] {
-  const name = titleFromPrompt(prompt);
-  const body = colorFromPrompt(prompt, "#6e7d88");
-  const lower = name.toLowerCase();
-  return [
-    box("outerShell", `${name} Outer Shell`, undefined, "housing", addSpatial(`Protects the major ${lower} subsystems.`, "surrounding the internal structure and presenting the recognizable exterior"), [0, 0, 0], [150, 82, 92], [0, 0, -118], body, { relatedKeys: ["supportFrame", "inputInterface", "outputInterface"] }),
-    box("supportFrame", `${name} Internal Support Frame`, "outerShell", "structure", addSpatial(`Keeps the ${lower} aligned under use.`, "inside the shell and attached to the lower base"), [0, -6, -4], [128, 58, 72], [0, -42, -38], "#53616b", { relatedKeys: ["outerShell", "functionalCore"] }),
-    cylinder("functionalCore", `${name} Functional Core`, "supportFrame", "motion", addSpatial(`Represents the primary working mechanism of the ${lower}.`, "inside the support frame and connected between input and output interfaces"), [-28, 1, 4], [52, 36, 36], [-86, 10, 12], "#d19a48", "x", { relatedKeys: ["inputInterface", "outputInterface"] }),
-    box("inputInterface", `${name} Input Interface`, "outerShell", "input", addSpatial(`Shows where material, force, or user intent enters the ${lower}.`, "attached to the front-left exterior and connected to the core"), [-46, 16, 50], [54, 28, 9], [-102, 42, 98], "#cbd4da", { relatedKeys: ["functionalCore"] }),
-    box("outputInterface", `${name} Output Interface`, "outerShell", "output", addSpatial(`Shows where the ${lower} produces its result.`, "attached to the front-right exterior and connected from the core"), [47, -9, 50], [54, 28, 9], [106, -24, 100], "#b5c4cc", { relatedKeys: ["functionalCore"] }),
-    box("controlArea", `${name} Control Area`, "outerShell", "control", addSpatial(`Provides user control for the ${lower}.`, "on the upper exterior surface, above the core"), [38, 39, 38], [48, 14, 10], [84, 90, 82], "#3c7fa0", { relatedKeys: ["functionalCore"], detail: true }),
-    box("baseSupport", `${name} Base Support`, "supportFrame", "support", addSpatial(`Stabilizes the ${lower} during operation.`, "below the shell and attached to the frame"), [0, -53, 0], [118, 14, 78], [0, -120, 0], "#424c55", { relatedKeys: ["supportFrame"] }),
-    cylinder("serviceFastener", `${name} Service Fastener`, "outerShell", "fastener", addSpatial(`Represents removable hardware for servicing the ${lower}.`, "on the outer shell near a panel edge"), [-62, 32, 48], [12, 12, 12], [-120, 80, 92], "#d7dde2", "z", { relatedKeys: ["outerShell"], detail: true }),
-  ];
-}
-
 function inferGeneralUnknownSpecs(prompt: string): EverydaySpec[] {
-  const value = prompt.toLowerCase();
-  if (/\b(window|room|portable)?\s*(unit\s*)?(air\s*conditioner|ac\b|a\/c|hvac)\b/.test(value)) return windowAcSpecs(prompt);
-  if (/\b(cordless\s*)?(drill|driver|power\s*drill)\b/.test(value)) return drillSpecs(prompt);
-  if (/\b(coffee\s*maker|coffee\s*machine|brewer|drip\s*coffee)\b/.test(value)) return coffeeMakerSpecs(prompt);
-  if (/\b(desktop\s*)?(printer|scanner\s*printer|inkjet|laser\s*printer)\b/.test(value)) return printerSpecs(prompt);
-  if (/\b(bicycle|bike)?\s*(pump|floor\s*pump|tire\s*pump)\b/.test(value)) return pumpSpecs(prompt);
-  if (/\b(blender|food\s*processor|smoothie\s*maker)\b/.test(value)) return blenderSpecs(prompt);
-  return defaultUnknownSpecs(prompt);
+  const plan = semanticPlan(prompt);
+  switch (plan.family) {
+    case "thermalAppliance":
+      return windowAcSpecs(prompt);
+    case "poweredHandTool":
+      return drillSpecs(prompt);
+    case "beverageAppliance":
+      return coffeeMakerSpecs(prompt);
+    case "printer":
+      return printerSpecs(prompt);
+    case "pump":
+      return pumpSpecs(prompt);
+    case "blender":
+      return blenderSpecs(prompt);
+    case "pairedWearable":
+      return eyewearSpecs(prompt);
+    case "elongatedHandTool":
+      return elongatedToolSpecs(prompt);
+    case "mechanicalSubassembly":
+      return mechanicalSubassemblySpecs(prompt);
+    case "lightingFixture":
+      return lightingFixtureSpecs(prompt);
+    case "loopObject":
+      return loopObjectSpecs(prompt);
+    case "genericAssembly":
+      return generalSemanticSpecs(prompt);
+  }
 }
 
 function matchesGeneralUnknownProfile(prompt: string) {
-  const value = prompt.toLowerCase();
-  return (
-    /\b(window|room|portable)?\s*(unit\s*)?(air\s*conditioner|ac\b|a\/c|hvac)\b/.test(value) ||
-    /\b(cordless\s*)?(drill|driver|power\s*drill)\b/.test(value) ||
-    /\b(coffee\s*maker|coffee\s*machine|brewer|drip\s*coffee)\b/.test(value) ||
-    /\b(desktop\s*)?(printer|scanner\s*printer|inkjet|laser\s*printer)\b/.test(value) ||
-    /\b(bicycle|bike)?\s*(pump|floor\s*pump|tire\s*pump)\b/.test(value) ||
-    /\b(blender|food\s*processor|smoothie\s*maker)\b/.test(value)
-  );
+  return semanticPlan(prompt).family !== "genericAssembly";
 }
 
 function generalUnknownProject(
   prompt: string,
   options: { scale?: number; detail?: DetailLevel },
 ): ForgeProject {
-  const project = buildEverydayProject(titleFromPrompt(prompt), prompt, inferGeneralUnknownSpecs(prompt), options);
-  project.history = [`General semantic decomposition: ${project.name}`];
+  const plan = semanticPlan(prompt);
+  const project = buildEverydayProject(plan.name, prompt, inferGeneralUnknownSpecs(prompt), options);
+  project.history = [
+    `General semantic decomposition: ${project.name}`,
+    `Semantic plan: ${plan.family} subject=${plan.subject}`,
+  ];
   return project;
+}
+
+function coreRecipeMatchesPrompt(project: ForgeProject, prompt: string) {
+  const plan = semanticPlan(prompt);
+  if (plan.family !== "genericAssembly") return false;
+  const value = prompt.toLowerCase();
+  const name = project.name.toLowerCase();
+  if (name === "table" && /\b(lamp|light|sconce|lantern)\b/.test(value)) return false;
+  if (/vehicle|car|automobile|coupe|sedan|roadster/.test(name) && /\b(transmission|gearbox|differential|clutch)\b/.test(value)) return false;
+  return true;
 }
 
 function matchesDresser(prompt: string) {
@@ -559,7 +736,7 @@ export function createForgeProject(
   if (matchesGeneralUnknownProfile(cleaned)) return generalUnknownProject(cleaned, options);
 
   const coreProject = createCoreForgeProject(cleaned, options);
-  if (!hasCoreGenericFallback(coreProject)) return coreProject;
+  if (!hasCoreGenericFallback(coreProject) && coreRecipeMatchesPrompt(coreProject, cleaned)) return coreProject;
 
   return generalUnknownProject(cleaned, options);
 }
