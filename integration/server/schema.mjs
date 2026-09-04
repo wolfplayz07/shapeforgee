@@ -72,7 +72,9 @@ export function summary(record) {
   return {
     id: p.id, name: p.name, revision: record.revision,
     updated_at: record.updated_at, part_count: p.parts.length, source: p.source,
-    warning: p.source === "procedural-concept"
+    warning: p.source === "workers-ai"
+      ? "Generated from a validated Workers AI physical-object plan; dimensions and engineering validity are not verified."
+      : p.source === "procedural-concept"
       ? "Generated semantic concept from inferred components; dimensions and engineering validity are not verified."
       : p.source === "imported"
         ? "Custom concept assembled from supplied primitives; dimensions and engineering validity are not verified."
