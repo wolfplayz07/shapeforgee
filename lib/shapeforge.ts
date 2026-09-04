@@ -384,6 +384,163 @@ function hingedProject(
   return buildEverydayProject(titleFromPrompt(prompt), prompt, specs, options);
 }
 
+function addSpatial(purpose: string, spatial: string) {
+  return `${purpose} Spatial relationship: ${spatial}.`;
+}
+
+function hasCoreGenericFallback(project: ForgeProject) {
+  const names = new Set(project.parts.map((part) => part.name));
+  return (
+    names.has("Main Frame") &&
+    names.has("Outer Body") &&
+    names.has("Drive Core") &&
+    names.has("Control Module") &&
+    names.has("Output Module")
+  );
+}
+
+function windowAcSpecs(prompt: string): EverydaySpec[] {
+  const body = colorFromPrompt(prompt, "#d9dde0");
+  const dark = "#2f363b";
+  const metal = "#8fa1aa";
+  return [
+    box("cabinet", "Sleeve Cabinet", undefined, "housing", addSpatial("Forms the rectangular wall sleeve around the air conditioner.", "surrounding the internal thermal path and bridging room-side front to outdoor rear"), [0, 0, 0], [190, 82, 112], [0, 0, -135], body, { relatedKeys: ["frontGrille", "condenserCoil", "mountRail"] }),
+    box("frontGrille", "Front Intake Grille", "cabinet", "input", addSpatial("Admits room air into the unit.", "attached to the front face, outside the filter"), [0, 0, 61], [178, 62, 7], [0, 0, 118], dark, { relatedKeys: ["airFilter", "blowerFan"] }),
+    box("airFilter", "Slide-Out Air Filter", "frontGrille", "input", addSpatial("Captures dust before air reaches the cold coil.", "inside the front grille and in front of the evaporator coil"), [0, -1, 52], [160, 49, 5], [-115, 0, 88], "#cdd6db", { relatedKeys: ["evaporatorCoil"], detail: true }),
+    box("evaporatorCoil", "Evaporator Coil", "cabinet", "thermal", addSpatial("Absorbs heat from indoor air.", "behind the filter, above the condensate tray, and connected to the compressor"), [-34, 4, 31], [78, 58, 11], [-84, 32, 55], "#74a7bd", { relatedKeys: ["compressor", "blowerFan"] }),
+    cylinder("blowerFan", "Crossflow Blower Fan", "cabinet", "motion", addSpatial("Pulls room air through the filter and pushes cooled air out.", "mounted horizontally behind the front grille and below the control panel"), [38, -5, 34], [92, 20, 20], [88, -16, 65], "#56636b", "x", { relatedKeys: ["frontGrille", "evaporatorCoil"] }),
+    cylinder("compressor", "Sealed Compressor", "cabinet", "power", addSpatial("Compresses refrigerant for the cooling loop.", "inside the lower rear compartment and connected between both coils"), [-48, -26, -24], [44, 44, 48], [-96, -72, -42], "#30383f", "y", { relatedKeys: ["evaporatorCoil", "condenserCoil"] }),
+    box("condenserCoil", "Rear Condenser Coil", "cabinet", "thermal", addSpatial("Rejects absorbed heat outdoors.", "at the back face, behind the compressor and in front of the exhaust louvers"), [34, 1, -53], [86, 58, 10], [96, 16, -112], metal, { relatedKeys: ["compressor", "rearLouver"] }),
+    box("rearLouver", "Rear Exhaust Louver", "cabinet", "output", addSpatial("Lets hot air leave the outdoor side.", "attached outside the rear face behind the condenser coil"), [0, 0, -64], [178, 64, 7], [0, 0, -166], dark, { relatedKeys: ["condenserCoil"] }),
+    box("controlPanel", "Control Panel", "frontGrille", "control", addSpatial("Houses buttons, display, and thermostat controls.", "on the upper front edge, above the blower outlet"), [63, 31, 66], [52, 16, 8], [106, 78, 122], "#3b7799", { relatedKeys: ["blowerFan"], detail: true }),
+    box("mountRail", "Side Mounting Rails", "cabinet", "support", addSpatial("Supports the cabinet in a window opening.", "attached along both lower outside edges"), [0, -50, 0], [206, 12, 122], [0, -118, 0], "#788690", { relatedKeys: ["cabinet"], detail: true }),
+  ];
+}
+
+function drillSpecs(prompt: string): EverydaySpec[] {
+  const body = colorFromPrompt(prompt, "#d2a237");
+  const dark = "#2d3338";
+  const metal = "#aeb8c0";
+  return [
+    box("housing", "Drill Motor Housing", undefined, "housing", addSpatial("Contains the motor and gears in a pistol-shaped body.", "above the handle and behind the chuck"), [-12, 8, 0], [102, 48, 46], [0, 70, 0], body, { rotation: [0, 0, -6], relatedKeys: ["gearbox", "handle"] }),
+    cylinder("gearbox", "Front Gearbox Collar", "housing", "motion", addSpatial("Steps motor speed down before the chuck.", "concentric with the chuck at the front of the housing"), [49, 10, 0], [34, 38, 38], [93, 42, 0], metal, "x", { rotation: [0, 0, -6], relatedKeys: ["chuck", "motor"] }),
+    cylinder("chuck", "Keyless Chuck", "gearbox", "output", addSpatial("Clamps the drill bit at the working end.", "attached to the front of the gearbox and coaxial with the bit"), [82, 10, 0], [37, 24, 24], [158, 24, 0], dark, "x", { rotation: [0, 0, -6], relatedKeys: ["bit"] }),
+    cylinder("bit", "Drill Bit", "chuck", "output", addSpatial("Represents the removable cutting tool.", "projecting forward from the chuck"), [119, 10, 0], [50, 6, 6], [220, 12, 0], metal, "x", { rotation: [0, 0, -6], detail: true }),
+    cylinder("motor", "Electric Motor", "housing", "power", addSpatial("Provides rotary drive for drilling.", "inside the rear housing and connected to the gearbox"), [-18, 8, 0], [48, 28, 28], [-54, 18, 0], "#59646c", "x", { relatedKeys: ["gearbox", "batteryPack"], detail: true }),
+    box("handle", "Angled Grip Handle", "housing", "support", addSpatial("Positions the hand below the motor body.", "below and slightly behind the housing"), [-32, -46, 0], [34, 84, 38], [-38, -106, 0], body, { rotation: [0, 0, 16], relatedKeys: ["trigger", "batteryPack"] }),
+    box("trigger", "Variable-Speed Trigger", "handle", "control", addSpatial("Controls motor speed with finger pressure.", "inside the front of the handle, below the housing"), [-7, -27, 0], [13, 25, 16], [14, -46, 50], dark, { rotation: [0, 0, 11], relatedKeys: ["motor"] }),
+    box("batteryPack", "Slide-On Battery Pack", "handle", "power", addSpatial("Supplies removable cordless power.", "attached below the handle as the lowest mass"), [-30, -101, 0], [61, 31, 54], [-30, -176, 0], dark, { relatedKeys: ["handle", "motor"] }),
+    box("vent", "Cooling Vents", "housing", "thermal", addSpatial("Lets motor heat escape.", "on the side wall beside the hidden motor"), [3, 12, -26], [34, 16, 4], [24, 42, -58], "#22282d", { detail: true }),
+  ];
+}
+
+function coffeeMakerSpecs(prompt: string): EverydaySpec[] {
+  const body = colorFromPrompt(prompt, "#48545d");
+  return [
+    box("housing", "Countertop Brewer Housing", undefined, "housing", addSpatial("Forms the upright body of the coffee maker.", "behind the carafe and surrounding the heating and water path"), [0, 14, 0], [118, 142, 78], [0, 70, -86], body, { relatedKeys: ["reservoir", "brewBasket", "warmingPlate"] }),
+    box("reservoir", "Water Reservoir", "housing", "fluid", addSpatial("Stores incoming water before brewing.", "inside the rear upper housing above the heater tube"), [-33, 42, -12], [42, 76, 46], [-85, 82, -50], "#7fa9be", { relatedKeys: ["heater", "brewBasket"] }),
+    cylinder("heater", "Heating Element", "housing", "thermal", addSpatial("Heats water before it rises to the brew head.", "below the reservoir and inside the base"), [-31, -43, 0], [60, 12, 12], [-72, -92, 0], "#b77442", "x", { relatedKeys: ["reservoir", "warmingPlate"], detail: true }),
+    box("brewBasket", "Brew Basket", "housing", "input", addSpatial("Holds the filter and ground coffee.", "front upper bay above the carafe mouth"), [24, 37, 44], [60, 34, 28], [74, 74, 90], "#2f363b", { relatedKeys: ["dripSpout", "carafe"] }),
+    cylinder("dripSpout", "Drip Spout", "brewBasket", "output", addSpatial("Directs brewed coffee downward.", "below the brew basket and above the carafe opening"), [24, 12, 55], [18, 8, 8], [75, 20, 128], "#c0c9cf", "y", { relatedKeys: ["carafe"] }),
+    box("warmingPlate", "Warming Plate", "housing", "thermal", addSpatial("Keeps the carafe warm.", "on the lower front base directly below the carafe"), [22, -53, 42], [76, 9, 58], [55, -116, 78], "#20272c", { relatedKeys: ["carafe", "heater"] }),
+    box("carafe", "Glass Carafe", "warmingPlate", "vessel", addSpatial("Collects brewed coffee.", "outside the front housing, sitting on the warming plate"), [22, -17, 47], [70, 62, 52], [82, -28, 122], "#adc8d4", { relatedKeys: ["handle", "dripSpout"] }),
+    box("handle", "Carafe Handle", "carafe", "support", addSpatial("Provides a grip for pouring.", "attached to the outside right side of the carafe"), [63, -17, 47], [18, 48, 14], [134, -18, 118], "#2f363b", { relatedKeys: ["carafe"] }),
+    box("controlPanel", "Brew Control Panel", "housing", "control", addSpatial("Houses buttons and indicators.", "on the front face beside the brew basket"), [-31, 3, 43], [38, 24, 7], [-70, 5, 96], "#3d7795", { detail: true }),
+  ];
+}
+
+function printerSpecs(prompt: string): EverydaySpec[] {
+  const body = colorFromPrompt(prompt, "#d5d9dc");
+  const dark = "#343b42";
+  return [
+    box("chassis", "Printer Chassis", undefined, "housing", addSpatial("Forms the low rectangular desktop printer body.", "surrounding the paper path from lower front tray to upper output tray"), [0, 0, 0], [190, 62, 128], [0, 0, -120], body, { relatedKeys: ["paperTray", "scannerLid", "outputTray"] }),
+    box("paperTray", "Front Paper Tray", "chassis", "input", addSpatial("Feeds blank paper into the machine.", "sliding out from the lower front face"), [0, -29, 76], [158, 18, 74], [0, -64, 148], "#bcc5ca", { relatedKeys: ["feedRoller"] }),
+    cylinder("feedRoller", "Paper Feed Roller", "chassis", "motion", addSpatial("Pulls sheets from the tray through the print path.", "inside the lower front bay above the paper tray"), [0, -15, 38], [136, 13, 13], [0, -38, 82], dark, "x", { relatedKeys: ["paperTray", "printHead"] }),
+    box("printHead", "Print Head Carriage", "chassis", "output", addSpatial("Moves ink across the page.", "inside the middle bay spanning left to right above the paper path"), [0, 2, 10], [118, 22, 20], [0, 18, 58], "#52606a", { relatedKeys: ["inkCartridge", "feedRoller"] }),
+    box("inkCartridge", "Ink Cartridge Set", "printHead", "fluid", addSpatial("Stores colored ink for the print head.", "mounted on top of the moving print head carriage"), [36, 18, 10], [48, 20, 22], [76, 48, 60], "#2e6f93", { relatedKeys: ["printHead"] }),
+    box("outputTray", "Output Tray", "chassis", "output", addSpatial("Catches printed sheets.", "extending from the upper front face above the input tray"), [0, 18, 86], [154, 11, 72], [0, 64, 155], "#aeb8be", { relatedKeys: ["paperTray"] }),
+    box("scannerLid", "Flatbed Scanner Lid", "chassis", "structure", addSpatial("Covers the scanner glass on multifunction printers.", "hinged on the top surface above the chassis"), [0, 40, -5], [182, 16, 118], [0, 112, -15], "#eef1f2", { relatedKeys: ["hinge"] }),
+    cylinder("hinge", "Rear Lid Hinge", "scannerLid", "motion", addSpatial("Lets the scanner lid open.", "along the rear edge of the top lid"), [0, 32, -70], [168, 10, 10], [0, 74, -132], dark, "x", { relatedKeys: ["scannerLid"], detail: true }),
+    box("controlPanel", "Status Control Panel", "chassis", "control", addSpatial("Shows printer status and accepts controls.", "on the upper front right corner"), [64, 39, 66], [48, 12, 18], [110, 91, 122], "#3b7894", { detail: true }),
+  ];
+}
+
+function pumpSpecs(prompt: string): EverydaySpec[] {
+  const body = colorFromPrompt(prompt, "#5f7f92");
+  const dark = "#293138";
+  return [
+    cylinder("barrel", "Pump Barrel", undefined, "fluid", addSpatial("Compresses air as the plunger moves.", "vertical center tube between the base and handle"), [0, 5, 0], [36, 144, 36], [0, 20, 0], body, "y", { relatedKeys: ["plungerRod", "baseFoot", "hose"] }),
+    cylinder("plungerRod", "Plunger Rod", "barrel", "motion", addSpatial("Transfers handle motion into the barrel.", "concentric inside the pump barrel and extending above it"), [0, 83, 0], [12, 120, 12], [0, 146, 0], "#b7c0c6", "y", { relatedKeys: ["handle", "barrel"] }),
+    box("handle", "T-Handle Grip", "plungerRod", "support", addSpatial("Gives both hands leverage for pumping.", "attached across the top of the plunger rod"), [0, 148, 0], [112, 18, 24], [0, 222, 0], dark, { relatedKeys: ["plungerRod"] }),
+    box("baseFoot", "Wide Base Foot", "barrel", "support", addSpatial("Stabilizes the pump under foot pressure.", "attached below the vertical barrel at floor level"), [0, -78, 0], [118, 12, 54], [0, -144, 0], dark, { relatedKeys: ["barrel"] }),
+    cylinder("hose", "Flexible Air Hose", "barrel", "fluid", addSpatial("Carries compressed air to the tire valve.", "connected near the lower barrel and curving outward to the side"), [54, -42, 0], [72, 9, 9], [124, -82, 35], "#20262b", "x", { rotation: [0, 0, -22], relatedKeys: ["valveChuck"] }),
+    cylinder("valveChuck", "Valve Chuck", "hose", "fastener", addSpatial("Locks onto a bicycle tire valve.", "attached to the free end of the hose"), [98, -70, 0], [24, 15, 15], [178, -122, 46], "#c4a24d", "x", { relatedKeys: ["hose"] }),
+    cylinder("gauge", "Pressure Gauge", "barrel", "control", addSpatial("Displays tire pressure during pumping.", "mounted on the front of the lower barrel"), [0, -37, 22], [34, 10, 34], [0, -72, 72], "#e6edf0", "z", { relatedKeys: ["barrel"], detail: true }),
+  ];
+}
+
+function blenderSpecs(prompt: string): EverydaySpec[] {
+  const base = colorFromPrompt(prompt, "#656f77");
+  return [
+    box("motorBase", "Motor Base", undefined, "power", addSpatial("Houses the electric motor and supports the pitcher.", "below the pitcher and surrounding the drive coupler"), [0, -48, 0], [104, 64, 86], [0, -126, 0], base, { relatedKeys: ["pitcher", "controlPanel", "driveCoupler"] }),
+    cylinder("driveCoupler", "Drive Coupler", "motorBase", "motion", addSpatial("Transfers motor torque into the blades.", "centered on top of the base and concentric with the blade hub"), [0, -10, 0], [34, 16, 34], [0, -34, 0], "#2b333a", "y", { relatedKeys: ["bladeAssembly"] }),
+    box("pitcher", "Clear Pitcher Jar", "motorBase", "vessel", addSpatial("Contains ingredients during blending.", "above the motor base and surrounding the blade assembly"), [0, 35, 0], [92, 112, 78], [0, 76, 0], "#9dc2d1", { relatedKeys: ["bladeAssembly", "lid", "jarHandle"] }),
+    cylinder("bladeAssembly", "Blade Assembly", "pitcher", "output", addSpatial("Chops and circulates contents.", "inside the bottom of the pitcher and attached to the drive coupler"), [0, -10, 0], [58, 8, 58], [0, 5, 0], "#c0c8ce", "y", { relatedKeys: ["driveCoupler"], detail: true }),
+    box("lid", "Pitcher Lid", "pitcher", "housing", addSpatial("Closes the top of the jar.", "attached above the pitcher opening"), [0, 98, 0], [98, 14, 82], [0, 166, 0], "#2c3339", { relatedKeys: ["capPlug"] }),
+    cylinder("capPlug", "Center Cap Plug", "lid", "input", addSpatial("Lets ingredients be added through the lid.", "concentric in the top lid"), [0, 109, 0], [30, 12, 30], [0, 196, 0], "#444d55", "y", { detail: true }),
+    box("jarHandle", "Pitcher Handle", "pitcher", "support", addSpatial("Provides a side grip for lifting and pouring.", "attached to the outside right wall of the pitcher"), [58, 35, 0], [18, 74, 20], [118, 72, 0], "#2f363b", { relatedKeys: ["pitcher"] }),
+    box("controlPanel", "Speed Control Panel", "motorBase", "control", addSpatial("Selects blending speeds.", "on the front face of the motor base"), [0, -43, 48], [58, 24, 7], [0, -94, 106], "#3b7894", { relatedKeys: ["motorBase"], detail: true }),
+  ];
+}
+
+function defaultUnknownSpecs(prompt: string): EverydaySpec[] {
+  const name = titleFromPrompt(prompt);
+  const body = colorFromPrompt(prompt, "#6e7d88");
+  const lower = name.toLowerCase();
+  return [
+    box("outerShell", `${name} Outer Shell`, undefined, "housing", addSpatial(`Protects the major ${lower} subsystems.`, "surrounding the internal structure and presenting the recognizable exterior"), [0, 0, 0], [150, 82, 92], [0, 0, -118], body, { relatedKeys: ["supportFrame", "inputInterface", "outputInterface"] }),
+    box("supportFrame", `${name} Internal Support Frame`, "outerShell", "structure", addSpatial(`Keeps the ${lower} aligned under use.`, "inside the shell and attached to the lower base"), [0, -6, -4], [128, 58, 72], [0, -42, -38], "#53616b", { relatedKeys: ["outerShell", "functionalCore"] }),
+    cylinder("functionalCore", `${name} Functional Core`, "supportFrame", "motion", addSpatial(`Represents the primary working mechanism of the ${lower}.`, "inside the support frame and connected between input and output interfaces"), [-28, 1, 4], [52, 36, 36], [-86, 10, 12], "#d19a48", "x", { relatedKeys: ["inputInterface", "outputInterface"] }),
+    box("inputInterface", `${name} Input Interface`, "outerShell", "input", addSpatial(`Shows where material, force, or user intent enters the ${lower}.`, "attached to the front-left exterior and connected to the core"), [-46, 16, 50], [54, 28, 9], [-102, 42, 98], "#cbd4da", { relatedKeys: ["functionalCore"] }),
+    box("outputInterface", `${name} Output Interface`, "outerShell", "output", addSpatial(`Shows where the ${lower} produces its result.`, "attached to the front-right exterior and connected from the core"), [47, -9, 50], [54, 28, 9], [106, -24, 100], "#b5c4cc", { relatedKeys: ["functionalCore"] }),
+    box("controlArea", `${name} Control Area`, "outerShell", "control", addSpatial(`Provides user control for the ${lower}.`, "on the upper exterior surface, above the core"), [38, 39, 38], [48, 14, 10], [84, 90, 82], "#3c7fa0", { relatedKeys: ["functionalCore"], detail: true }),
+    box("baseSupport", `${name} Base Support`, "supportFrame", "support", addSpatial(`Stabilizes the ${lower} during operation.`, "below the shell and attached to the frame"), [0, -53, 0], [118, 14, 78], [0, -120, 0], "#424c55", { relatedKeys: ["supportFrame"] }),
+    cylinder("serviceFastener", `${name} Service Fastener`, "outerShell", "fastener", addSpatial(`Represents removable hardware for servicing the ${lower}.`, "on the outer shell near a panel edge"), [-62, 32, 48], [12, 12, 12], [-120, 80, 92], "#d7dde2", "z", { relatedKeys: ["outerShell"], detail: true }),
+  ];
+}
+
+function inferGeneralUnknownSpecs(prompt: string): EverydaySpec[] {
+  const value = prompt.toLowerCase();
+  if (/\b(window|room|portable)?\s*(unit\s*)?(air\s*conditioner|ac\b|a\/c|hvac)\b/.test(value)) return windowAcSpecs(prompt);
+  if (/\b(cordless\s*)?(drill|driver|power\s*drill)\b/.test(value)) return drillSpecs(prompt);
+  if (/\b(coffee\s*maker|coffee\s*machine|brewer|drip\s*coffee)\b/.test(value)) return coffeeMakerSpecs(prompt);
+  if (/\b(desktop\s*)?(printer|scanner\s*printer|inkjet|laser\s*printer)\b/.test(value)) return printerSpecs(prompt);
+  if (/\b(bicycle|bike)?\s*(pump|floor\s*pump|tire\s*pump)\b/.test(value)) return pumpSpecs(prompt);
+  if (/\b(blender|food\s*processor|smoothie\s*maker)\b/.test(value)) return blenderSpecs(prompt);
+  return defaultUnknownSpecs(prompt);
+}
+
+function matchesGeneralUnknownProfile(prompt: string) {
+  const value = prompt.toLowerCase();
+  return (
+    /\b(window|room|portable)?\s*(unit\s*)?(air\s*conditioner|ac\b|a\/c|hvac)\b/.test(value) ||
+    /\b(cordless\s*)?(drill|driver|power\s*drill)\b/.test(value) ||
+    /\b(coffee\s*maker|coffee\s*machine|brewer|drip\s*coffee)\b/.test(value) ||
+    /\b(desktop\s*)?(printer|scanner\s*printer|inkjet|laser\s*printer)\b/.test(value) ||
+    /\b(bicycle|bike)?\s*(pump|floor\s*pump|tire\s*pump)\b/.test(value) ||
+    /\b(blender|food\s*processor|smoothie\s*maker)\b/.test(value)
+  );
+}
+
+function generalUnknownProject(
+  prompt: string,
+  options: { scale?: number; detail?: DetailLevel },
+): ForgeProject {
+  const project = buildEverydayProject(titleFromPrompt(prompt), prompt, inferGeneralUnknownSpecs(prompt), options);
+  project.history = [`General semantic decomposition: ${project.name}`];
+  return project;
+}
+
 function matchesDresser(prompt: string) {
   return /\b(dresser|chest of drawers|nightstand|bedside cabinet)\b/i.test(prompt);
 }
@@ -399,14 +556,12 @@ export function createForgeProject(
   const cleaned = prompt.trim() || "A-72 bowling machine";
   if (matchesDresser(cleaned)) return dresserProject(cleaned, options);
   if (matchesPen(cleaned)) return penProject(cleaned, options);
+  if (matchesGeneralUnknownProfile(cleaned)) return generalUnknownProject(cleaned, options);
 
-  const archetype = inferEverydayArchetype(cleaned);
-  if (archetype === "handheld") return handheldProject(cleaned, options);
-  if (archetype === "panel") return panelProject(cleaned, options);
-  if (archetype === "vessel") return vesselProject(cleaned, options);
-  if (archetype === "hinged") return hingedProject(cleaned, options);
+  const coreProject = createCoreForgeProject(cleaned, options);
+  if (!hasCoreGenericFallback(coreProject)) return coreProject;
 
-  return createCoreForgeProject(cleaned, options);
+  return generalUnknownProject(cleaned, options);
 }
 
 export const samplePrompts = [

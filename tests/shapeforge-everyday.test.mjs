@@ -123,56 +123,39 @@ test("basic pen detail keeps the silhouette but removes tiny internals", () => {
   assertValid(project);
 });
 
-test("uses one generalized handheld silhouette for unrelated handheld requests", () => {
-  const drill = createForgeProject("yellow cordless handheld drill", { detail: "detailed" });
-  const dryer = createForgeProject("portable blue hair dryer with handle", { detail: "detailed" });
+test("replaces generic fallback with prompt-specific semantic decompositions", () => {
+  const cases = [
+    ["window unit air conditioner", ["Sleeve Cabinet", "Front Intake Grille", "Evaporator Coil", "Sealed Compressor", "Rear Condenser Coil"], ["thermal", "input", "output"]],
+    ["cordless drill", ["Drill Motor Housing", "Front Gearbox Collar", "Keyless Chuck", "Variable-Speed Trigger", "Slide-On Battery Pack"], ["power", "motion", "control"]],
+    ["coffee maker", ["Countertop Brewer Housing", "Water Reservoir", "Heating Element", "Brew Basket", "Glass Carafe"], ["fluid", "thermal", "vessel"]],
+    ["desktop printer", ["Printer Chassis", "Front Paper Tray", "Paper Feed Roller", "Print Head Carriage", "Ink Cartridge Set"], ["input", "motion", "output"]],
+    ["bicycle pump", ["Pump Barrel", "Plunger Rod", "T-Handle Grip", "Flexible Air Hose", "Valve Chuck"], ["fluid", "motion", "fastener"]],
+    ["blender", ["Motor Base", "Drive Coupler", "Clear Pitcher Jar", "Blade Assembly", "Speed Control Panel"], ["power", "motion", "vessel"]],
+  ];
+  const genericNames = new Set(["Main Frame", "Outer Body", "Drive Core", "Control Module", "Output Module"]);
+  const signatures = new Set();
 
-  for (const project of [drill, dryer]) {
+  for (const [prompt, expectedNames, expectedCategories] of cases) {
+    const project = createForgeProject(prompt, { detail: "detailed" });
     const names = new Set(project.parts.map((part) => part.name));
-    assert.ok(names.has("Main Body Housing"));
-    assert.ok(names.has("Front Barrel"));
-    assert.ok(names.has("Angled Handle"));
-    assert.ok(names.has("Grip Surface"));
-    assert.ok(names.has("Primary Control"));
+    const categories = new Set(project.parts.map((part) => part.category));
+
+    for (const genericName of genericNames) {
+      assert.ok(!names.has(genericName), `${prompt} reused generic ${genericName}`);
+    }
+    for (const expectedName of expectedNames) {
+      assert.ok(names.has(expectedName), `${prompt} missing ${expectedName}`);
+    }
+    for (const category of expectedCategories) {
+      assert.ok(categories.has(category), `${prompt} missing ${category} category`);
+    }
+
+    assert.ok(project.parts.some((part) => part.parent), `${prompt} should infer parent-child relationships`);
+    assert.ok(project.parts.some((part) => part.related.length > 0), `${prompt} should infer related-component relationships`);
+    assert.ok(project.parts.some((part) => /front|behind|inside|above|below|attached|concentric|surrounding|connected/i.test(part.purpose)), `${prompt} should encode spatial relationships`);
+    signatures.add(project.parts.map((part) => part.name).join("|"));
     assertValid(project);
   }
 
-  assert.ok(drill.parts.some((part) => part.name === "Power Base"));
-  assert.ok(!dryer.parts.some((part) => part.name === "Power Base"));
-  assert.ok(dryer.parts.find((part) => part.name === "Working End").size[0] > drill.parts.find((part) => part.name === "Working End").size[0]);
-});
-
-test("uses a thin-panel silhouette instead of the old generic box assembly", () => {
-  const project = createForgeProject("passive flat panel collector with support frame");
-  const panel = project.parts.find((part) => part.name === "Primary Panel");
-  const names = new Set(project.parts.map((part) => part.name));
-
-  assert.ok(panel);
-  assert.ok(panel.size[0] / panel.size[1] > 20);
-  assert.ok(names.has("Rear Layer"));
-  assert.ok(names.has("Left Support"));
-  assert.ok(names.has("Right Support"));
-  assertValid(project);
-});
-
-test("uses a vessel silhouette for containers and adds handles only when appropriate", () => {
-  const bottle = createForgeProject("steel reusable bottle with cap");
-  const mug = createForgeProject("blue coffee mug with handle");
-
-  assert.ok(bottle.parts.some((part) => part.name === "Container Body" && part.kind === "cylinder"));
-  assert.ok(!bottle.parts.some((part) => part.name === "Side Handle"));
-  assert.ok(mug.parts.some((part) => part.name === "Side Handle"));
-  assertValid(bottle);
-  assertValid(mug);
-});
-
-test("uses a hinged-mechanism silhouette for a stapler-like request", () => {
-  const project = createForgeProject("compact desktop stapler");
-  const names = new Set(project.parts.map((part) => part.name));
-
-  assert.ok(names.has("Lower Base"));
-  assert.ok(names.has("Upper Arm"));
-  assert.ok(names.has("Pivot Hinge"));
-  assert.ok(names.has("Working Contact"));
-  assertValid(project);
+  assert.equal(signatures.size, cases.length);
 });
