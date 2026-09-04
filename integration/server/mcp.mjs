@@ -9,6 +9,18 @@ const summaryOutput = z.object({
   updated_at: z.string(), part_count: z.number().int().nonnegative(),
   source: z.string(), warning: z.string(),
 });
+
+const CUSTOM_SHAPE_GUIDANCE = [
+  "Use this for unfamiliar or user-specific objects instead of forcing a generic recipe.",
+  "Infer the object's real component structure from the request and general world knowledge; do not require the object to be pre-registered by name.",
+  "Start with the recognizable outer silhouette, then add distinctive functional parts and small visible hardware that make the object read correctly at a glance.",
+  "Use box primitives for flat/prismatic pieces and cylinder primitives for shafts, tubes, wheels, knobs, barrels, pins, holes represented as solid inserts, and round hardware.",
+  "Approximate tapers or cones with 2-5 progressively smaller coaxial cylinders; approximate curves with several short rotated boxes/cylinders rather than one incorrect block.",
+  "Preserve realistic relative proportions. Small parts should actually be small compared with the parent assembly instead of being enlarged merely for visibility.",
+  "Create parent/related links that follow physical assembly. Give parts meaningful names and purposes so progressive explode reveals subsystems before tiny components.",
+  "For detailed requests, include internal parts when they are important to how the object works; for simple requests, prioritize silhouette and externally recognizable pieces.",
+].join(" ");
+
 export function createShapeForgeServer(store, widgetHtml) {
   const server = new McpServer({ name: "shapeforge", version: "0.1.0" });
   registerAppResource(server, "ShapeForge assembly viewer", VIEWER_URI, { mimeType: RESOURCE_MIME_TYPE }, async () => ({
@@ -42,8 +54,8 @@ export function createShapeForgeServer(store, widgetHtml) {
     structuredContent: { ...summary(record), ...(full ? { project: record.project } : {}) },
     _meta: { project: record.project },
   });
-  register("create_assembly", "Create ShapeForge assembly", "Use this when creating a saved concept from ShapeForge's existing deterministic recipes. Unknown prompts return an explicitly labeled generic placeholder, not an AI-generated model. For custom designs use save_assembly. Supply a fresh UUID request_id; reuse it only when retrying the identical action.", createSchema, false, input => recordResult(store.create(input)));
-  register("save_assembly", "Save custom ShapeForge assembly", "Use this when you have designed explicit box/cylinder components for a new project. Saves a separate assembly, not an overwrite. Use COMP-000001-style unique IDs, valid parent/related links, positive dimensions, and a fresh UUID request_id. Geometry is conceptual and is not engineering-validated.", saveSchema, false, input => recordResult(store.save(input)));
+  register("create_assembly", "Create ShapeForge assembly", "Use this only when the request clearly matches one of ShapeForge's existing deterministic recipes. For an unfamiliar object, a user-specific variation, or anything whose recognizable shape depends on inferred components, design the parts yourself and use save_assembly instead of accepting the generic placeholder. Supply a fresh UUID request_id; reuse it only when retrying the identical action.", createSchema, false, input => recordResult(store.create(input)));
+  register("save_assembly", "Design and save custom ShapeForge assembly", `${CUSTOM_SHAPE_GUIDANCE} Save a separate assembly, not an overwrite. Use COMP-000001-style unique IDs, valid parent/related links, positive dimensions, and a fresh UUID request_id. Geometry is conceptual and is not engineering-validated.`, saveSchema, false, input => recordResult(store.save(input)));
   register("list_assemblies", "Find saved ShapeForge assemblies", "Use this to find saved projects by name. Returns IDs and current revisions; use next_offset for another page. Does not modify projects.", listSchema, true, input => {
     const result = store.list(input);
     return { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result };

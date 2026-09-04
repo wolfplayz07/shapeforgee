@@ -95,7 +95,6 @@ export class AssemblyStore {
         this.db.exec("COMMIT");
         return cached;
       }
-      // Match the persisted/wire representation, including removal of undefined fields.
       const result = JSON.parse(JSON.stringify(action()));
       assertStoredProjectMatches(this.db, result?.project, "PERSISTENCE_FAILURE", "The assembly was not stored under the ID returned by ShapeForge.");
       this.db.prepare("INSERT INTO requests VALUES (?, ?, ?)").run(input.request_id, fingerprint, JSON.stringify(result));

@@ -1,50 +1,20 @@
-export type Vec3 = [number, number, number];
-export type PrimitiveKind = "box" | "cylinder";
-export type CylinderAxis = "x" | "y" | "z";
-export type DetailLevel = "basic" | "detailed";
+export * from "./shapeforge-core.ts";
 
-export interface ForgePart {
-  id: string;
-  name: string;
-  kind: PrimitiveKind;
-  axis?: CylinderAxis;
-  parent: string | null;
-  category: string;
-  purpose: string;
-  position: Vec3;
-  size: Vec3;
-  rotation: Vec3;
-  explode: Vec3;
-  related: string[];
-  color: string;
-  hidden: boolean;
-  detached: boolean;
-}
+import {
+  createForgeProject as createCoreForgeProject,
+  samplePrompts as coreSamplePrompts,
+  type CylinderAxis,
+  type DetailLevel,
+  type ForgePart,
+  type ForgeProject,
+  type PrimitiveKind,
+  type Vec3,
+} from "./shapeforge-core.ts";
 
-export interface ForgeProject {
-  format: "ShapeForge Project";
-  formatVersion: 2;
-  id: string;
-  name: string;
-  prompt: string;
-  createdAt: string;
-  source: "recovered-recipe" | "procedural-vehicle" | "procedural-concept" | "imported";
-  allocator: { nextComponent: number };
-  settings: { scale: number; detail: DetailLevel };
-  parts: ForgePart[];
-  history: string[];
-}
-
-export interface ValidationCheck {
-  id: string;
-  label: string;
-  ok: boolean;
-}
-
-interface PartSpec {
+interface EverydaySpec {
   key: string;
   name: string;
-  kind?: PrimitiveKind;
+  kind: PrimitiveKind;
   axis?: CylinderAxis;
   parentKey?: string;
   category: string;
@@ -58,16 +28,16 @@ interface PartSpec {
   detail?: boolean;
 }
 
-interface Recipe {
-  name: string;
-  specs: PartSpec[];
-  source?: ForgeProject["source"];
-}
+type EverydayArchetype = "handheld" | "panel" | "vessel" | "hinged";
 
-const COMPONENT_PREFIX = "COMP-";
+const clamp = (value: number, min: number, max: number) =>
+  Math.max(min, Math.min(max, value));
+
+const scaleVec = (value: Vec3, scale: number): Vec3 =>
+  value.map((entry) => entry * scale) as Vec3;
 
 const componentId = (index: number) =>
-  `${COMPONENT_PREFIX}${String(index).padStart(6, "0")}`;
+  `COMP-${String(index).padStart(6, "0")}`;
 
 const box = (
   key: string,
@@ -79,10 +49,11 @@ const box = (
   size: Vec3,
   explode: Vec3,
   color: string,
-  options: Partial<Pick<PartSpec, "rotation" | "relatedKeys" | "detail">> = {},
-): PartSpec => ({
+  options: Partial<Pick<EverydaySpec, "rotation" | "relatedKeys" | "detail">> = {},
+): EverydaySpec => ({
   key,
   name,
+  kind: "box",
   parentKey,
   category,
   purpose,
@@ -90,7 +61,6 @@ const box = (
   size,
   explode,
   color,
-  kind: "box",
   ...options,
 });
 
@@ -104,11 +74,13 @@ const cylinder = (
   size: Vec3,
   explode: Vec3,
   color: string,
-  axis: CylinderAxis = "z",
-  options: Partial<Pick<PartSpec, "rotation" | "relatedKeys" | "detail">> = {},
-): PartSpec => ({
+  axis: CylinderAxis = "x",
+  options: Partial<Pick<EverydaySpec, "rotation" | "relatedKeys" | "detail">> = {},
+): EverydaySpec => ({
   key,
   name,
+  kind: "cylinder",
+  axis,
   parentKey,
   category,
   purpose,
@@ -116,362 +88,61 @@ const cylinder = (
   size,
   explode,
   color,
-  kind: "cylinder",
-  axis,
   ...options,
 });
 
-function a72Recipe(): Recipe {
-  return {
-    name: "A-72 Bowling Machine",
-    specs: [
-      box("base", "Base Frame", undefined, "structure", "Primary machine support structure.", [0, 55, 0], [220, 28, 110], [0, 30, -12], "#6f7d8a", { relatedKeys: ["lift", "table", "return"] }),
-      box("cover", "Upper Housing", "base", "cover", "Protects the upper mechanism.", [-70, -80, 38], [185, 58, 75], [-150, -125, 45], "#d4d0c7", { relatedKeys: ["lift", "boom"] }),
-      box("lift", "Elevation Lift", "base", "motion", "Raises and lowers the sweep and pin-handling assemblies.", [55, -25, 35], [55, 110, 38], [120, -55, 65], "#56616b", { relatedKeys: ["motor", "boom", "wheelL", "wheelR"] }),
-      box("boom", "Boom Arm", "lift", "motion", "Transfers lift motion across the machine.", [0, -15, 58], [150, 20, 24], [35, -140, 75], "#69747d", { relatedKeys: ["lift", "table"] }),
-      box("table", "Pin Table", "base", "pin handling", "Supports and positions bowling pins.", [15, 30, 18], [120, 22, 72], [42, 100, 18], "#424b54", { relatedKeys: ["pins", "boom"] }),
-      box("pins", "Pin Set", "table", "pin handling", "Simplified ten-pin set for assembly visualization.", [15, 24, 47], [95, 55, 55], [25, 55, 135], "#f1f2ee", { relatedKeys: ["table"], detail: true }),
-      cylinder("motor", "Lift Motor", "lift", "controls", "Drives the elevation lift.", [82, 8, 42], [48, 36, 36], [155, 18, 38], "#4398dc", "x", { relatedKeys: ["lift", "wheelL", "wheelR"] }),
-      cylinder("wheelL", "Left Drive Wheel", "lift", "motion", "Transfers motor torque to the lift.", [48, -70, 76], [34, 34, 18], [72, -158, 92], "#f2a13f", "z", { relatedKeys: ["motor"], detail: true }),
-      cylinder("wheelR", "Right Drive Wheel", "lift", "motion", "Transfers motor torque to the lift.", [105, -70, 76], [34, 34, 18], [160, -150, 92], "#f2a13f", "z", { relatedKeys: ["motor"], detail: true }),
-      box("control", "Control Box", "base", "controls", "Houses the machine control electronics.", [-78, 5, 20], [48, 52, 36], [-145, 10, 24], "#3e91d1", { relatedKeys: ["motor"] }),
-      box("return", "Ball Return Tunnel", "base", "ball return", "Guides the bowling ball away from the pin deck.", [-55, 65, 14], [105, 28, 45], [-132, 118, 0], "#3f4952", { relatedKeys: ["base"] }),
-      box("guard", "Side Safety Guard", "base", "cover", "Protects the moving lift assembly.", [105, 55, 35], [18, 75, 90], [175, 92, 70], "#c9cdca", { relatedKeys: ["lift"], detail: true }),
-    ],
-  };
-}
-
-function fanRecipe(): Recipe {
-  return {
-    name: "Desk Fan",
-    specs: [
-      cylinder("base", "Weighted Base", undefined, "support", "Stabilizes the fan.", [0, -78, 0], [100, 18, 78], [0, -75, -15], "#46586a", "y", { relatedKeys: ["stand"] }),
-      box("stand", "Support Stand", "base", "support", "Raises the motor and fan head.", [0, -18, 0], [18, 112, 18], [0, -35, 0], "#5d7185", { relatedKeys: ["base", "motor"] }),
-      cylinder("motor", "Motor Housing", "stand", "motion", "Turns the fan hub and blades.", [0, 55, 10], [62, 62, 46], [0, 12, 85], "#4b657d", "z", { relatedKeys: ["hub", "guard"] }),
-      cylinder("guard", "Safety Guard", "motor", "cover", "Shields the rotating blades.", [0, 55, -18], [158, 158, 12], [0, 0, -95], "#8a99a7", "z", { relatedKeys: ["motor"], detail: true }),
-      cylinder("hub", "Blade Hub", "motor", "motion", "Connects the blades to the motor shaft.", [0, 55, -35], [28, 28, 24], [0, 0, -135], "#f3a94c", "z", { relatedKeys: ["bladeA", "bladeB", "bladeC"] }),
-      box("bladeA", "Blade A", "hub", "motion", "Moves air through the guard.", [0, 94, -48], [18, 76, 7], [0, 75, -165], "#78b8df", { rotation: [0, 0, 0], relatedKeys: ["hub"], detail: true }),
-      box("bladeB", "Blade B", "hub", "motion", "Moves air through the guard.", [34, 34, -48], [18, 76, 7], [78, -40, -165], "#78b8df", { rotation: [0, 0, 120], relatedKeys: ["hub"], detail: true }),
-      box("bladeC", "Blade C", "hub", "motion", "Moves air through the guard.", [-34, 34, -48], [18, 76, 7], [-78, -40, -165], "#78b8df", { rotation: [0, 0, 240], relatedKeys: ["hub"], detail: true }),
-    ],
-  };
-}
-
-function tableRecipe(): Recipe {
-  return {
-    name: "Table",
-    specs: [
-      box("top", "Tabletop", undefined, "surface", "Provides the primary work surface.", [0, 34, 0], [170, 14, 100], [0, 80, 0], "#a77b52", { relatedKeys: ["legA", "legB", "legC", "legD"] }),
-      box("legA", "Front Left Leg", "top", "support", "Supports the tabletop.", [-66, -18, -38], [14, 92, 14], [-95, -115, -72], "#79563a", { relatedKeys: ["top"] }),
-      box("legB", "Front Right Leg", "top", "support", "Supports the tabletop.", [66, -18, -38], [14, 92, 14], [95, -115, -72], "#79563a", { relatedKeys: ["top"] }),
-      box("legC", "Rear Left Leg", "top", "support", "Supports the tabletop.", [-66, -18, 38], [14, 92, 14], [-95, -115, 72], "#79563a", { relatedKeys: ["top"], detail: true }),
-      box("legD", "Rear Right Leg", "top", "support", "Supports the tabletop.", [66, -18, 38], [14, 92, 14], [95, -115, 72], "#79563a", { relatedKeys: ["top"], detail: true }),
-      box("brace", "Center Brace", "top", "support", "Keeps the legs aligned.", [0, -28, 0], [130, 12, 12], [0, -145, 0], "#876345", { relatedKeys: ["legA", "legB", "legC", "legD"], detail: true }),
-    ],
-  };
-}
-
-function wheelRecipe(): Recipe {
-  return {
-    name: "Wheel Assembly",
-    specs: [
-      cylinder("rim", "Outer Rim", undefined, "structure", "Carries the tire and supports the spokes.", [0, 0, 0], [110, 110, 20], [0, 0, 55], "#596877", "z", { relatedKeys: ["hub", "spokeA", "spokeB", "spokeC", "spokeD"] }),
-      cylinder("hub", "Center Hub", "rim", "motion", "Connects the wheel to its axle.", [0, 0, -8], [32, 32, 34], [0, 0, -95], "#f0a443", "z", { relatedKeys: ["rim", "axle"] }),
-      cylinder("axle", "Axle", "hub", "motion", "Supports rotation through the hub.", [0, 0, -15], [18, 18, 92], [0, 0, -155], "#9aa7b3", "z", { relatedKeys: ["hub"], detail: true }),
-      box("spokeA", "Spoke A", "rim", "structure", "Transfers load between rim and hub.", [0, 28, 0], [8, 48, 8], [0, 92, 10], "#7d8b98", { relatedKeys: ["hub", "rim"], detail: true }),
-      box("spokeB", "Spoke B", "rim", "structure", "Transfers load between rim and hub.", [28, 0, 0], [8, 48, 8], [92, 0, 10], "#7d8b98", { rotation: [0, 0, 90], relatedKeys: ["hub", "rim"], detail: true }),
-      box("spokeC", "Spoke C", "rim", "structure", "Transfers load between rim and hub.", [0, -28, 0], [8, 48, 8], [0, -92, 10], "#7d8b98", { relatedKeys: ["hub", "rim"], detail: true }),
-      box("spokeD", "Spoke D", "rim", "structure", "Transfers load between rim and hub.", [-28, 0, 0], [8, 48, 8], [-92, 0, 10], "#7d8b98", { rotation: [0, 0, 90], relatedKeys: ["hub", "rim"], detail: true }),
-    ],
-  };
-}
-
-function chairRecipe(): Recipe {
-  return {
-    name: "Chair",
-    specs: [
-      box("seat", "Seat", undefined, "surface", "Supports the occupant.", [0, 12, 0], [96, 14, 92], [0, 78, 0], "#4e7596", { relatedKeys: ["back", "legA", "legB", "legC", "legD"] }),
-      box("back", "Backrest", "seat", "surface", "Supports the occupant's back.", [0, 76, 40], [96, 112, 12], [0, 145, 82], "#5d86a7", { relatedKeys: ["seat"] }),
-      box("legA", "Front Left Leg", "seat", "support", "Supports the seat.", [-36, -34, -34], [12, 82, 12], [-78, -120, -78], "#344b60", { relatedKeys: ["seat"] }),
-      box("legB", "Front Right Leg", "seat", "support", "Supports the seat.", [36, -34, -34], [12, 82, 12], [78, -120, -78], "#344b60", { relatedKeys: ["seat"] }),
-      box("legC", "Rear Left Leg", "seat", "support", "Supports the seat.", [-36, -34, 34], [12, 82, 12], [-78, -120, 78], "#344b60", { relatedKeys: ["seat"], detail: true }),
-      box("legD", "Rear Right Leg", "seat", "support", "Supports the seat.", [36, -34, 34], [12, 82, 12], [78, -120, 78], "#344b60", { relatedKeys: ["seat"], detail: true }),
-    ],
-  };
-}
-
-function lampRecipe(): Recipe {
-  return {
-    name: "Desk Lamp",
-    specs: [
-      cylinder("base", "Lamp Base", undefined, "support", "Stabilizes the lamp.", [0, -70, 0], [78, 16, 62], [0, -85, 0], "#586b7d", "y", { relatedKeys: ["stem"] }),
-      box("stem", "Adjustable Stem", "base", "support", "Positions the lamp head.", [0, -8, 0], [14, 118, 14], [-45, 0, 0], "#7390a8", { rotation: [0, 0, -8], relatedKeys: ["shade"] }),
-      box("shade", "Lamp Shade", "stem", "cover", "Directs light toward the work surface.", [34, 58, 0], [78, 48, 62], [95, 88, 0], "#e7a84f", { rotation: [0, 0, -12], relatedKeys: ["bulb"] }),
-      cylinder("bulb", "Light Bulb", "shade", "output", "Converts electrical power into light.", [38, 50, -34], [28, 28, 22], [112, 70, -85], "#f4e6ae", "z", { relatedKeys: ["shade"], detail: true }),
-    ],
-  };
-}
-
-function bicycleRecipe(): Recipe {
-  return {
-    name: "Bicycle",
-    specs: [
-      box("frame", "Main Frame", undefined, "structure", "Carries the rider and connects the major assemblies.", [0, 0, 0], [112, 14, 14], [0, 25, 45], "#48a6d8", { rotation: [0, 0, -8], relatedKeys: ["frontWheel", "rearWheel", "fork", "crank"] }),
-      cylinder("frontWheel", "Front Wheel", "frame", "motion", "Rolls and steers the bicycle.", [76, -38, 0], [74, 74, 12], [145, -88, 0], "#4f5c68", "z", { relatedKeys: ["fork"] }),
-      cylinder("rearWheel", "Rear Wheel", "frame", "motion", "Receives drive force and rolls the bicycle.", [-76, -38, 0], [74, 74, 12], [-145, -88, 0], "#4f5c68", "z", { relatedKeys: ["frame", "crank"] }),
-      box("fork", "Front Fork", "frame", "steering", "Connects the handlebar to the front wheel.", [58, 4, 0], [12, 88, 12], [118, 35, 0], "#7e96a9", { rotation: [0, 0, -14], relatedKeys: ["frontWheel", "handlebar"] }),
-      box("handlebar", "Handlebar", "fork", "steering", "Lets the rider steer the bicycle.", [65, 50, 0], [60, 8, 8], [138, 112, 0], "#a8b2bb", { relatedKeys: ["fork"], detail: true }),
-      cylinder("crank", "Crankset", "frame", "drivetrain", "Transfers pedal force toward the rear wheel.", [-5, -12, -12], [30, 30, 16], [0, -92, -70], "#f0a443", "z", { relatedKeys: ["rearWheel"], detail: true }),
-      box("seat", "Saddle", "frame", "support", "Supports the rider.", [-28, 44, 0], [48, 12, 28], [-55, 118, 0], "#343b42", { relatedKeys: ["frame"], detail: true }),
-    ],
-  };
-}
-
-function tvRecipe(kind: "tv" | "monitor"): Recipe {
-  const isMonitor = kind === "monitor";
-  const rootName = isMonitor ? "Monitor" : "Television";
-  return {
-    name: isMonitor ? "Computer Monitor" : "Television",
-    specs: [
-      box("rear", "Rear Housing", undefined, "housing", "Protects the internal components.", [0, -24, -18], [isMonitor ? 295 : 316, isMonitor ? 180 : 191, 24], [0, 0, -125], "#303944", { relatedKeys: ["screen", "board", "power"] }),
-      box("screen", isMonitor ? "LCD Panel" : "Display Panel", "rear", "display", `Displays the ${rootName.toLowerCase()} image.`, [0, -24, 22], [isMonitor ? 280 : 300, isMonitor ? 165 : 175, 12], [0, 0, 145], "#289ed8", { relatedKeys: ["board", "power"] }),
-      box("bezel", "Front Bezel", "rear", "housing", "Frames and protects the display.", [0, -24, 5], [isMonitor ? 305 : 326, isMonitor ? 190 : 201, 16], [0, 0, 85], "#171d24", { relatedKeys: ["screen", "rear"] }),
-      box("board", isMonitor ? "Controller Board" : "Main Board", "rear", "electronics", "Processes image, controls, and input signals.", [-30, -20, -2], [112, 64, 8], [-155, -15, -35], "#2f914c", { relatedKeys: ["screen", "power", "speakerL", "speakerR"] }),
-      box("power", "Power Module", "rear", "electronics", "Converts and distributes electrical power.", [58, 38, -4], [96, 44, 12], [135, 125, -28], "#913f45", { relatedKeys: ["board", "screen"] }),
-      box("stand", "Stand Neck", "rear", "support", `Supports the ${rootName.toLowerCase()}.`, [0, 104, -4], [42, 82, 40], [0, 125, 0], "#424d58", { relatedKeys: ["base"] }),
-      box("base", "Stand Base", "stand", "support", `Stabilizes the ${rootName.toLowerCase()}.`, [0, 158, -4], [160, 20, 82], [0, 185, 0], "#4c5863", { relatedKeys: ["stand"] }),
-      box("speakerL", "Left Speaker", "rear", "audio", "Produces left-channel sound.", [-126, 18, -3], [36, 88, 18], [-205, 72, 0], "#47535e", { relatedKeys: ["board"], detail: true }),
-      box("speakerR", "Right Speaker", "rear", "audio", "Produces right-channel sound.", [126, 18, -3], [36, 88, 18], [205, 72, 0], "#47535e", { relatedKeys: ["board"], detail: true }),
-    ],
-  };
-}
-
-function pcRecipe(): Recipe {
-  return {
-    name: "Desktop PC",
-    specs: [
-      box("case", "Outer Case", undefined, "housing", "Contains and protects the computer components.", [0, 0, 0], [220, 300, 180], [0, 0, -145], "#303944", { relatedKeys: ["motherboard", "psu", "gpu"] }),
-      box("motherboard", "Motherboard", "case", "electronics", "Connects and controls the major components.", [-20, -5, 15], [150, 210, 8], [-175, 0, 35], "#2e924c", { relatedKeys: ["gpu", "psu", "cooler"] }),
-      box("psu", "Power Supply", "case", "electronics", "Supplies electrical power.", [35, 95, 10], [105, 75, 140], [145, 135, 0], "#56515b", { relatedKeys: ["motherboard", "gpu"] }),
-      box("gpu", "Graphics Card", "motherboard", "electronics", "Processes graphics and display output.", [-5, 35, 35], [150, 45, 35], [0, 165, 95], "#3e72aa", { relatedKeys: ["motherboard", "psu"] }),
-      cylinder("cooler", "CPU Cooler", "motherboard", "cooling", "Removes heat from the processor.", [-20, -50, 45], [74, 74, 55], [0, -165, 95], "#6e7b86", "z", { relatedKeys: ["motherboard"] }),
-      cylinder("fanFront", "Front Fan", "case", "cooling", "Moves cool air into the case.", [70, -70, 65], [76, 76, 25], [165, -122, 108], "#526274", "z", { relatedKeys: ["case"], detail: true }),
-      cylinder("fanRear", "Rear Fan", "case", "cooling", "Exhausts warm air from the case.", [-75, -70, -65], [72, 72, 25], [-165, -122, -108], "#526274", "z", { relatedKeys: ["case"], detail: true }),
-    ],
-  };
-}
-
-function shaftRecipe(): Recipe {
-  return {
-    name: "Shaft / Bearing Benchmark",
-    specs: [
-      cylinder("shaft", "Main Shaft", undefined, "motion", "Transfers rotational force through the assembly.", [0, 0, 0], [210, 36, 36], [0, 0, 0], "#8495a6", "x", { relatedKeys: ["bearingA", "bearingB"] }),
-      cylinder("bearingA", "Bearing A", "shaft", "support", "Supports the left side of the shaft.", [-64, 0, 0], [38, 76, 76], [-135, 0, 0], "#d49a4d", "x", { relatedKeys: ["shaft"] }),
-      cylinder("bearingB", "Bearing B", "shaft", "support", "Supports the right side of the shaft.", [64, 0, 0], [38, 76, 76], [135, 0, 0], "#d49a4d", "x", { relatedKeys: ["shaft"] }),
-    ],
-  };
-}
-
-function hashText(text: string) {
-  let hash = 2166136261;
-  for (let i = 0; i < text.length; i += 1) {
-    hash ^= text.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
+function colorFromPrompt(prompt: string, fallback: string) {
+  const value = prompt.toLowerCase();
+  if (/\bwhite|ivory|cream\b/.test(value)) return "#d8d4ca";
+  if (/\bblack|onyx\b/.test(value)) return "#30353a";
+  if (/\bblue|navy|cobalt\b/.test(value)) return "#3d7194";
+  if (/\bgreen|emerald\b/.test(value)) return "#4f7d5e";
+  if (/\bred|crimson|burgundy\b/.test(value)) return "#9c4144";
+  if (/\bsilver|gray|grey|metal\b/.test(value)) return "#7d8992";
+  if (/\bwalnut|dark wood\b/.test(value)) return "#704b33";
+  if (/\boak|light wood\b/.test(value)) return "#a77c50";
+  return fallback;
 }
 
 function titleFromPrompt(prompt: string) {
   const cleaned = prompt
-    .replace(/\b(please|make|create|build|design|generate|show me|a|an|the)\b/gi, " ")
+    .replace(/\b(please|make|create|build|design|generate|show me|a|an|the|with)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
-  const value = cleaned || "Concept Assembly";
-  return value
+  return (cleaned || "Everyday Object")
     .split(" ")
-    .slice(0, 7)
+    .slice(0, 6)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 }
 
-function vehiclePaint(prompt: string, fallback: string) {
-  const value = prompt.toLowerCase();
-  if (/\b(red|crimson|burgundy|maroon)\b/.test(value)) return "#a83b3f";
-  if (/\b(black|onyx)\b/.test(value)) return "#252b31";
-  if (/\b(white|ivory|cream)\b/.test(value)) return "#d9d7ce";
-  if (/\b(blue|navy|cobalt)\b/.test(value)) return "#346b91";
-  if (/\b(green|emerald|highland)\b/.test(value)) return "#477657";
-  if (/\b(orange|copper)\b/.test(value)) return "#bd6634";
-  if (/\b(yellow|gold)\b/.test(value)) return "#c99a38";
-  if (/\b(silver|gray|grey)\b/.test(value)) return "#7b858d";
-  return fallback;
-}
-
-function vehicleRecipe(prompt: string): Recipe {
-  const value = prompt.toLowerCase();
-  const year = value.match(/\b(19|20)\d{2}\b/)?.[0];
-  const isChevelle = /\bchevelle\b/.test(value);
-  const isMustang = /\bmustang\b/.test(value);
-  const isCamaro = /\bcamaro\b/.test(value);
-  const isCharger = /\bcharger\b/.test(value);
-  const isCorvette = /\bcorvette\b/.test(value);
-  const isSs = /\bss\b|super\s+sport/.test(value);
-  const isFastback = /fastback|mach\s*1|boss\s*(302|429)?/.test(value) || isMustang;
-
-  const model = isChevelle
-    ? "Chevrolet Chevelle"
-    : isMustang
-      ? "Ford Mustang"
-      : isCamaro
-        ? "Chevrolet Camaro"
-        : isCharger
-          ? "Dodge Charger"
-          : isCorvette
-            ? "Chevrolet Corvette"
-            : titleFromPrompt(prompt);
-  const trim = isChevelle && isSs ? " SS" : /mach\s*1/.test(value) ? " Mach 1" : /boss\s*429/.test(value) ? " Boss 429" : /boss\s*302/.test(value) ? " Boss 302" : "";
-  const name = `${year ? `${year} ` : ""}${model}${trim}`.trim();
-
-  const chevelle = isChevelle;
-  const mustang = isMustang;
-  const corvette = isCorvette;
-  const bodyColor = vehiclePaint(prompt, chevelle ? "#316785" : mustang ? "#477657" : corvette ? "#a83b3f" : "#5c7290");
-  const stripeColor = /\bwhite\b/.test(value) ? "#2e3439" : "#e6e0d4";
-  const chrome = "#b8c1c8";
-  const rubber = "#20252a";
-  const glass = "#244b61";
-
-  const length = chevelle ? 330 : mustang ? 306 : corvette ? 292 : 316;
-  const bodyWidth = chevelle ? 126 : mustang ? 116 : corvette ? 120 : 122;
-  const wheelbase = chevelle ? 224 : mustang ? 210 : corvette ? 202 : 214;
-  const wheelDiameter = chevelle && isSs ? 64 : corvette ? 58 : 60;
-  const wheelX = wheelbase / 2;
-  const wheelY = -31;
-  const wheelZ = bodyWidth / 2 + 3;
-  const frontX = length / 2;
-  const rearX = -length / 2;
-  const hoodLength = chevelle ? 116 : mustang ? 126 : corvette ? 132 : 118;
-  const deckLength = chevelle ? 76 : mustang ? 54 : corvette ? 44 : 66;
-  const cabinX = chevelle ? -20 : mustang ? -25 : corvette ? -18 : -20;
-  const roofLength = chevelle ? 108 : mustang ? 72 : corvette ? 66 : 88;
-  const roofY = corvette ? 67 : 79;
-  const bodyHeight = corvette ? 34 : 42;
-
-  const specs: PartSpec[] = [
-    box("chassis", "Chassis", undefined, "structure", `Carries the ${name} body, suspension, and drivetrain.`, [0, -17, 0], [length - 20, 18, bodyWidth - 18], [0, -80, -25], "#3a4249", { relatedKeys: ["body", "engine", "frontAxle", "rearAxle"] }),
-    box("body", "Body Shell", "chassis", "body", `Defines the long, low ${name} exterior proportions.`, [0, 2, 0], [length, bodyHeight, bodyWidth], [0, 75, 0], bodyColor, { relatedKeys: ["hood", "deck", "roof", "frontFascia", "rearFascia"] }),
-    box("hood", chevelle && isSs ? "SS Cowl Hood" : "Long Hood", "body", "body", "Covers the front engine bay and establishes the model-specific nose length.", [(frontX - hoodLength / 2) - 13, 31, 0], [hoodLength, corvette ? 10 : 14, bodyWidth - 8], [105, 65, 0], bodyColor, { rotation: [0, 0, corvette ? -4 : -2], relatedKeys: ["engine", "frontFascia"] }),
-    box("deck", "Rear Deck", "body", "body", "Forms the distinct rear deck and trunk profile.", [(rearX + deckLength / 2) + 8, 31, 0], [deckLength, 13, bodyWidth - 9], [-110, 62, 0], bodyColor, { rotation: [0, 0, chevelle ? 1 : 3], relatedKeys: ["rearFascia", "roof"] }),
-    box("roof", chevelle ? "Notchback Roof" : isFastback ? "Fastback Roof" : "Cabin Roof", "body", "body", "Defines the passenger cabin silhouette.", [cabinX, roofY, 0], [roofLength, corvette ? 8 : 10, bodyWidth - 24], [0, 145, 0], bodyColor, { relatedKeys: ["windshield", "rearGlass", "interior"] }),
-    box("windshield", "Raked Windshield", "roof", "glass", "Closes the front of the passenger cabin.", [cabinX + roofLength / 2 + (corvette ? 10 : 9), corvette ? 52 : 58, 0], [corvette ? 52 : 58, 7, bodyWidth - 28], [105, 120, 0], glass, { rotation: [0, 0, corvette ? -55 : -52], relatedKeys: ["roof", "hood"] }),
-    box("rearGlass", chevelle ? "Notchback Rear Glass" : "Fastback Rear Glass", "roof", "glass", "Creates the model-specific rear roof slope.", [cabinX - roofLength / 2 - (chevelle ? 8 : 19), chevelle ? 57 : corvette ? 50 : 54, 0], [chevelle ? 49 : isFastback ? 80 : 58, 7, bodyWidth - 29], [-105, 118, 0], glass, { rotation: [0, 0, chevelle ? 55 : corvette ? 36 : 39], relatedKeys: ["roof", "deck"] }),
-    box("frontFascia", chevelle ? "Chevelle Front Fascia" : mustang ? "Mustang Nose Panel" : "Front Fascia", "body", "body", "Carries the grille, lamps, and front bumper.", [frontX + 1, 4, 0], [10, 34, bodyWidth - 4], [155, 0, 0], bodyColor, { relatedKeys: ["grille", "frontBumper"] }),
-    box("grille", chevelle ? "Twin-Section SS Grille" : mustang ? "Recessed Mustang Grille" : "Front Grille", "frontFascia", "trim", "Feeds cooling air and distinguishes the front-end design.", [frontX + 7, 8, 0], [5, chevelle ? 17 : 22, chevelle ? 88 : 76], [185, 8, 0], "#252c31", { relatedKeys: ["headlampL", "headlampR"] }),
-    box("frontBumper", "Front Bumper", "frontFascia", "trim", "Protects the lower front body edge.", [frontX + 8, -10, 0], [8, 8, bodyWidth + 2], [195, -42, 0], chrome, { relatedKeys: ["frontFascia"] }),
-    box("rearFascia", chevelle ? "Chevelle Tail Panel" : mustang ? "Mustang Tail Panel" : "Rear Fascia", "body", "body", "Carries the rear lamps and bumper.", [rearX - 1, 3, 0], [10, 32, bodyWidth - 5], [-155, 0, 0], chevelle ? "#292f34" : bodyColor, { relatedKeys: ["rearBumper", "tailLampBar"] }),
-    box("rearBumper", "Rear Bumper", "rearFascia", "trim", "Protects the lower rear body edge.", [rearX - 8, -10, 0], [8, 8, bodyWidth + 1], [-195, -42, 0], chrome, { relatedKeys: ["rearFascia"] }),
-    box("tailLampBar", chevelle ? "Chevelle Tail Lamps" : mustang ? "Triple Tail Lamps" : "Tail Lamps", "rearFascia", "lighting", "Provides the model-specific rear lighting signature.", [rearX - 7, 5, 0], [4, 13, mustang ? 66 : 82], [-188, 10, 0], "#a73734", { relatedKeys: ["rearFascia"] }),
-    cylinder("frontWheelL", "Front Left Wheel", "chassis", "motion", "Supports and steers the front-left corner.", [wheelX, wheelY, -wheelZ], [wheelDiameter, wheelDiameter, 20], [125, -105, -108], rubber, "z", { relatedKeys: ["frontAxle", "steering"] }),
-    cylinder("frontWheelR", "Front Right Wheel", "chassis", "motion", "Supports and steers the front-right corner.", [wheelX, wheelY, wheelZ], [wheelDiameter, wheelDiameter, 20], [125, -105, 108], rubber, "z", { relatedKeys: ["frontAxle", "steering"] }),
-    cylinder("rearWheelL", "Rear Left Wheel", "chassis", "motion", "Receives power at the rear-left corner.", [-wheelX, wheelY, -wheelZ], [wheelDiameter, wheelDiameter, 22], [-125, -105, -108], rubber, "z", { relatedKeys: ["rearAxle", "driveshaft"] }),
-    cylinder("rearWheelR", "Rear Right Wheel", "chassis", "motion", "Receives power at the rear-right corner.", [-wheelX, wheelY, wheelZ], [wheelDiameter, wheelDiameter, 22], [-125, -105, 108], rubber, "z", { relatedKeys: ["rearAxle", "driveshaft"] }),
-    cylinder("headlampL", chevelle ? "Outer Left Headlamp" : "Left Headlamp", "frontFascia", "lighting", "Illuminates the road ahead.", [frontX + 9, 10, -bodyWidth * 0.31], [8, 24, 24], [210, 42, -80], "#e8dfba", "x", { relatedKeys: ["grille"] }),
-    cylinder("headlampR", chevelle ? "Outer Right Headlamp" : "Right Headlamp", "frontFascia", "lighting", "Illuminates the road ahead.", [frontX + 9, 10, bodyWidth * 0.31], [8, 24, 24], [210, 42, 80], "#e8dfba", "x", { relatedKeys: ["grille"] }),
-    box("engine", chevelle && isSs ? "SS Big-Block V8" : mustang ? "Mustang V8" : "Engine", "chassis", "drivetrain", "Provides power beneath the long hood.", [wheelX - 25, 9, 0], [70, 38, 65], [120, 80, 0], "#a8673e", { relatedKeys: ["hood", "driveshaft"], detail: true }),
-    cylinder("frontAxle", "Front Axle", "chassis", "suspension", "Locates the front wheels across the chassis.", [wheelX, wheelY, 0], [bodyWidth + 22, 10, 10], [135, -90, 0], "#77828b", "z", { relatedKeys: ["frontWheelL", "frontWheelR"], detail: true }),
-    cylinder("rearAxle", "Rear Axle", "chassis", "drivetrain", "Transfers drive force to both rear wheels.", [-wheelX, wheelY, 0], [bodyWidth + 22, 12, 12], [-135, -90, 0], "#77828b", "z", { relatedKeys: ["rearWheelL", "rearWheelR", "driveshaft"], detail: true }),
-    cylinder("driveshaft", "Driveshaft", "chassis", "drivetrain", "Connects the transmission to the rear axle.", [-10, -23, 0], [wheelbase - 62, 10, 10], [0, -135, 0], "#8a959e", "x", { relatedKeys: ["engine", "rearAxle"], detail: true }),
-    box("interior", "Passenger Interior", "body", "interior", "Contains the seats, controls, and passenger compartment.", [cabinX, 46, 0], [roofLength - 18, 34, bodyWidth - 34], [0, 95, 0], "#443c36", { relatedKeys: ["roof", "steering"], detail: true }),
-    cylinder("steering", "Steering Wheel", "interior", "controls", "Controls front-wheel steering.", [cabinX + 28, 51, -28], [28, 28, 7], [58, 115, -80], "#2b3035", "z", { relatedKeys: ["frontWheelL", "frontWheelR"], detail: true }),
-  ];
-
-  if (chevelle) {
-    specs.push(
-      cylinder("headlampInnerL", "Inner Left Headlamp", "frontFascia", "lighting", "Completes the Chevelle quad-headlamp face.", [frontX + 9, 10, -bodyWidth * 0.16], [8, 22, 22], [212, 42, -38], "#e8dfba", "x", { relatedKeys: ["grille"], detail: true }),
-      cylinder("headlampInnerR", "Inner Right Headlamp", "frontFascia", "lighting", "Completes the Chevelle quad-headlamp face.", [frontX + 9, 10, bodyWidth * 0.16], [8, 22, 22], [212, 42, 38], "#e8dfba", "x", { relatedKeys: ["grille"], detail: true }),
-      box("ssStripe", "SS Body Stripe", "body", "trim", "Marks the Super Sport body treatment.", [3, 12, wheelZ + 8], [length - 54, 5, 3], [0, 50, 145], stripeColor, { relatedKeys: ["body"], detail: true }),
-    );
-  }
-
-  if (mustang) {
-    specs.push(
-      box("hoodScoop", "Mustang Hood Scoop", "hood", "body", "Adds the raised performance hood detail.", [75, 42, 0], [48, 9, 34], [145, 95, 0], bodyColor, { rotation: [0, 0, -2], relatedKeys: ["hood"], detail: true }),
-      cylinder("ponyBadge", "Pony Grille Emblem", "grille", "trim", "Identifies the Mustang at the center of its recessed grille.", [frontX + 11, 10, 0], [6, 13, 13], [222, 55, 0], chrome, "x", { relatedKeys: ["grille"], detail: true }),
-      box("rockerStripe", "Mustang Rocker Stripe", "body", "trim", "Accents the Mustang lower body line.", [2, -3, wheelZ + 8], [length - 62, 5, 3], [0, 35, 145], stripeColor, { relatedKeys: ["body"], detail: true }),
-    );
-  }
-
-  return { name, specs, source: "procedural-vehicle" };
-}
-
-function genericRecipe(prompt: string): Recipe {
-  const seed = hashText(prompt.toLowerCase());
-  const wide = 125 + (seed % 65);
-  const tall = 80 + ((seed >>> 5) % 85);
-  const deep = 70 + ((seed >>> 11) % 70);
-  const accent = ["#3f9ed5", "#58a987", "#ce8d48", "#7d74c8"][seed % 4];
-  const name = titleFromPrompt(prompt);
-  return {
-    name,
-    specs: [
-      box("frame", "Main Frame", undefined, "structure", `Carries the primary ${name.toLowerCase()} assembly.`, [0, 0, 0], [wide, tall, deep], [0, 0, -115], "#536371", { relatedKeys: ["body", "core", "control", "output"] }),
-      box("body", "Outer Body", "frame", "housing", "Protects and aligns the internal parts.", [0, -4, 18], [wide + 18, tall + 18, 18], [0, 0, 125], accent, { relatedKeys: ["frame", "control"] }),
-      cylinder("core", "Drive Core", "frame", "motion", "Provides the central mechanical action for the concept.", [-wide * 0.2, 0, 12], [52, 52, Math.max(38, deep * 0.48)], [-130, -20, 25], "#e0a24b", "z", { relatedKeys: ["frame", "output"] }),
-      box("control", "Control Module", "frame", "controls", "Coordinates the concept assembly.", [wide * 0.22, tall * 0.08, 16], [wide * 0.34, tall * 0.34, 28], [125, 58, 35], "#397fb7", { relatedKeys: ["core", "body"] }),
-      cylinder("output", "Output Module", "core", "output", "Represents the primary output interface.", [0, -tall * 0.25, -deep * 0.34], [48, 48, 34], [0, -115, -105], "#b9c6cf", "z", { relatedKeys: ["core"] }),
-      box("mount", "Mounting Base", "frame", "support", "Stabilizes the generated concept.", [0, tall * 0.62, 0], [wide * 0.75, 18, deep * 0.72], [0, 145, 0], "#424f5a", { relatedKeys: ["frame"] }),
-      cylinder("fastenerA", "Fastener A", "body", "fastener", "Secures the body to the main frame.", [-wide * 0.35, -tall * 0.28, 32], [14, 14, 14], [-120, -90, 95], "#d7dde2", "z", { relatedKeys: ["body", "frame"], detail: true }),
-      cylinder("fastenerB", "Fastener B", "body", "fastener", "Secures the body to the main frame.", [wide * 0.35, -tall * 0.28, 32], [14, 14, 14], [120, -90, 95], "#d7dde2", "z", { relatedKeys: ["body", "frame"], detail: true }),
-    ],
-  };
-}
-
-function matchRecipe(prompt: string): Recipe | null {
-  const value = prompt.toLowerCase();
-  if (/\b(chevelle|mustang|camaro|charger|corvette|car|automobile|coupe|sedan|roadster)\b/.test(value)) return vehicleRecipe(prompt);
-  if (/a\s*-?\s*72|bowling\s+machine/.test(value)) return a72Recipe();
-  if (/desk\s+fan|\bfan\b/.test(value)) return fanRecipe();
-  if (/\btable\b|\bdesk\b/.test(value)) return tableRecipe();
-  if (/\bwheel\b/.test(value)) return wheelRecipe();
-  if (/\bchair\b|\bstool\b/.test(value)) return chairRecipe();
-  if (/\blamp\b|desk\s+light/.test(value)) return lampRecipe();
-  if (/\bbicycle\b|\bbike\b/.test(value)) return bicycleRecipe();
-  if (/\btelevision\b|\btv\b/.test(value)) return tvRecipe("tv");
-  if (/\bmonitor\b/.test(value)) return tvRecipe("monitor");
-  if (/\bpc\b|computer\s+case|desktop\s+computer/.test(value)) return pcRecipe();
-  if (/\bshaft\b|\bbearing\b/.test(value)) return shaftRecipe();
-  return null;
-}
-
-const scaleVec = (value: Vec3, scale: number): Vec3 =>
-  value.map((entry) => entry * scale) as Vec3;
-
-function specsToProject(
-  recipe: Recipe,
+function buildEverydayProject(
+  name: string,
   prompt: string,
-  scale: number,
-  detail: DetailLevel,
-  source: ForgeProject["source"],
+  specs: EverydaySpec[],
+  options: { scale?: number; detail?: DetailLevel },
 ): ForgeProject {
-  const selectedSpecs = recipe.specs.filter((item) => detail === "detailed" || !item.detail);
-  const keys = new Set(selectedSpecs.map((item) => item.key));
-  const idByKey = new Map(selectedSpecs.map((item, index) => [item.key, componentId(index + 1)]));
-  const parts: ForgePart[] = selectedSpecs.map((item) => ({
-    id: idByKey.get(item.key)!,
-    name: item.name,
-    kind: item.kind ?? "box",
-    axis: item.axis,
-    parent: item.parentKey && keys.has(item.parentKey) ? idByKey.get(item.parentKey)! : null,
-    category: item.category,
-    purpose: item.purpose,
-    position: scaleVec(item.position, scale),
-    size: scaleVec(item.size, scale),
-    rotation: item.rotation ?? [0, 0, 0],
-    explode: scaleVec(item.explode, scale),
-    related: (item.relatedKeys ?? [])
+  const scale = clamp(options.scale ?? 1, 0.5, 1.8);
+  const detail = options.detail ?? "detailed";
+  const selected = specs.filter((spec) => detail === "detailed" || !spec.detail);
+  const keys = new Set(selected.map((spec) => spec.key));
+  const ids = new Map(selected.map((spec, index) => [spec.key, componentId(index + 1)]));
+  const parts: ForgePart[] = selected.map((spec) => ({
+    id: ids.get(spec.key)!,
+    name: spec.name,
+    kind: spec.kind,
+    axis: spec.axis,
+    parent: spec.parentKey && keys.has(spec.parentKey) ? ids.get(spec.parentKey)! : null,
+    category: spec.category,
+    purpose: spec.purpose,
+    position: scaleVec(spec.position, scale),
+    size: scaleVec(spec.size, scale),
+    rotation: spec.rotation ?? [0, 0, 0],
+    explode: scaleVec(spec.explode, scale),
+    related: (spec.relatedKeys ?? [])
       .filter((key) => keys.has(key))
-      .map((key) => idByKey.get(key)!),
-    color: item.color,
+      .map((key) => ids.get(key)!),
+    color: spec.color,
     hidden: false,
     detached: false,
   }));
@@ -480,15 +151,402 @@ function specsToProject(
     format: "ShapeForge Project",
     formatVersion: 2,
     id: "PROJ-000001",
-    name: recipe.name,
+    name,
     prompt,
     createdAt: new Date().toISOString(),
-    source,
+    source: "procedural-concept",
     allocator: { nextComponent: parts.length + 1 },
     settings: { scale, detail },
     parts,
-    history: [`Generated ${recipe.name}`],
+    history: [`Shape-aware everyday generation: ${name}`],
   };
+}
+
+function numberFromPrompt(prompt: string, fallback: number) {
+  const value = prompt.toLowerCase();
+  const digit = value.match(/\b([2-9])\s*[- ]?drawer/);
+  if (digit) return Number(digit[1]);
+  const words: Record<string, number> = {
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+  };
+  for (const [word, number] of Object.entries(words)) {
+    if (new RegExp(`\\b${word}\\s*[- ]?drawer`).test(value)) return number;
+  }
+  return fallback;
+}
+
+function dresserProject(
+  prompt: string,
+  options: { scale?: number; detail?: DetailLevel },
+): ForgeProject {
+  const value = prompt.toLowerCase();
+  const isNightstand = /nightstand|bedside/.test(value);
+  const drawerCount = clamp(numberFromPrompt(prompt, isNightstand ? 2 : 6), 2, 9);
+  const doubleColumn = !isNightstand && drawerCount >= 6 && !/tall|vertical|lingerie/.test(value);
+  const columns = doubleColumn ? 2 : 1;
+  const rows = Math.ceil(drawerCount / columns);
+  const width = isNightstand ? 105 : doubleColumn ? 205 : /narrow|tall/.test(value) ? 118 : 150;
+  const height = isNightstand ? 105 : /tall|vertical/.test(value) ? 220 : 170;
+  const depth = isNightstand ? 82 : 92;
+  const bodyColor = colorFromPrompt(prompt, "#8b6342");
+  const drawerColor = colorFromPrompt(prompt, "#9d744f");
+  const hardware = /brass|gold/.test(value) ? "#b9934d" : "#aeb6bc";
+  const rowHeight = (height - 28) / rows;
+  const cellWidth = (width - 24) / columns;
+  const specs: EverydaySpec[] = [
+    box("back", "Back Panel", undefined, "structure", "Squares and closes the rear of the dresser carcass.", [0, 0, -depth / 2 + 4], [width, height, 8], [0, 0, -125], bodyColor, { relatedKeys: ["leftSide", "rightSide", "top", "bottom"] }),
+    box("leftSide", "Left Side Panel", "back", "structure", "Forms the left side of the cabinet.", [-width / 2 + 6, 0, 0], [12, height, depth], [-120, 0, 0], bodyColor, { relatedKeys: ["back", "top", "bottom"] }),
+    box("rightSide", "Right Side Panel", "back", "structure", "Forms the right side of the cabinet.", [width / 2 - 6, 0, 0], [12, height, depth], [120, 0, 0], bodyColor, { relatedKeys: ["back", "top", "bottom"] }),
+    box("top", "Top Panel", "back", "surface", "Provides the finished top surface.", [0, height / 2 - 6, 0], [width + 8, 12, depth + 5], [0, 120, 0], bodyColor, { relatedKeys: ["back"] }),
+    box("bottom", "Bottom Panel", "back", "structure", "Ties the cabinet sides together at the base.", [0, -height / 2 + 8, 0], [width - 10, 12, depth - 8], [0, -105, 0], bodyColor, { relatedKeys: ["back"] }),
+  ];
+
+  for (let index = 0; index < drawerCount; index += 1) {
+    const row = Math.floor(index / columns);
+    const column = index % columns;
+    const x = columns === 1 ? 0 : (column === 0 ? -1 : 1) * cellWidth * 0.26;
+    const y = height / 2 - 18 - rowHeight * (row + 0.5);
+    const drawerWidth = cellWidth - 8;
+    const drawerHeight = rowHeight - 8;
+    const key = `drawer${index + 1}`;
+    const frontKey = `front${index + 1}`;
+    const handleKey = `handle${index + 1}`;
+    const explodeSide = columns === 1 ? 0 : column === 0 ? -35 : 35;
+    specs.push(
+      box(key, `Drawer ${index + 1}`, "back", "storage", "Sliding storage box inside the dresser.", [x, y, 3], [drawerWidth - 8, drawerHeight - 8, depth - 22], [explodeSide, 0, 110 + row * 18], "#76553c", { relatedKeys: [frontKey], detail: true }),
+      box(frontKey, `Drawer ${index + 1} Front`, key, "surface", "Visible drawer front that establishes the dresser layout.", [x, y, depth / 2 + 3], [drawerWidth, drawerHeight, 7], [explodeSide, 0, 155 + row * 18], drawerColor, { relatedKeys: [key, handleKey] }),
+    );
+
+    const useKnob = /knob|round handle/.test(value) || isNightstand;
+    if (useKnob) {
+      specs.push(cylinder(handleKey, `Drawer ${index + 1} Knob`, frontKey, "hardware", "Small pull knob for opening the drawer.", [x, y, depth / 2 + 10], [9, 9, 10], [explodeSide, 0, 205 + row * 18], hardware, "z", { relatedKeys: [frontKey] }));
+    } else {
+      specs.push(box(handleKey, `Drawer ${index + 1} Pull`, frontKey, "hardware", "Small horizontal pull for opening the drawer.", [x, y, depth / 2 + 11], [Math.min(34, drawerWidth * 0.35), 6, 7], [explodeSide, 0, 205 + row * 18], hardware, { relatedKeys: [frontKey] }));
+    }
+  }
+
+  const footX = width / 2 - 18;
+  const footZ = depth / 2 - 18;
+  [
+    ["footFL", -footX, footZ, -70, 75],
+    ["footFR", footX, footZ, 70, 75],
+    ["footRL", -footX, -footZ, -70, -75],
+    ["footRR", footX, -footZ, 70, -75],
+  ].forEach(([key, x, z, ex, ez]) => {
+    specs.push(box(String(key), String(key).replace("foot", "Foot "), "bottom", "support", "Small foot that lifts the cabinet off the floor.", [Number(x), -height / 2 - 5, Number(z)], [16, 22, 16], [Number(ex), -90, Number(ez)], bodyColor, { detail: true }));
+  });
+
+  const name = isNightstand ? `${drawerCount}-Drawer Nightstand` : `${drawerCount}-Drawer Dresser`;
+  return buildEverydayProject(name, prompt, specs, options);
+}
+
+function penProject(
+  prompt: string,
+  options: { scale?: number; detail?: DetailLevel },
+): ForgeProject {
+  const value = prompt.toLowerCase();
+  const bodyColor = colorFromPrompt(prompt, "#356f9b");
+  const gripColor = /rubber|soft grip/.test(value) ? "#2f363b" : colorFromPrompt(prompt, "#315c78");
+  const metal = "#b6c0c7";
+  const inkColor = /red ink/.test(value) ? "#923d42" : /green ink/.test(value) ? "#3d7653" : "#2d5f8f";
+  const retractable = !/capped|fountain/.test(value);
+  const specs: EverydaySpec[] = [
+    cylinder("lowerBarrel", "Lower Barrel", undefined, "housing", "Forms the front half of the pen body.", [19, 0, 0], [70, 13, 13], [0, 0, 0], bodyColor, "x", { relatedKeys: ["upperBarrel", "grip", "refill"] }),
+    cylinder("upperBarrel", "Upper Barrel", "lowerBarrel", "housing", "Forms the rear half of the pen body.", [-42, 0, 0], [54, 14, 14], [-92, 0, 0], bodyColor, "x", { relatedKeys: ["lowerBarrel", "clip", "clicker"] }),
+    cylinder("grip", "Grip Sleeve", "lowerBarrel", "grip", "Provides a thicker textured area for the fingers.", [48, 0, 0], [31, 15, 15], [78, 0, 0], gripColor, "x", { relatedKeys: ["lowerBarrel", "nose"] }),
+    cylinder("nose", "Tapered Tip Section", "grip", "tip", "Narrows the body toward the writing point.", [68, 0, 0], [18, 10, 10], [118, 0, 0], metal, "x", { relatedKeys: ["grip", "point"] }),
+    cylinder("point", "Writing Point", "nose", "tip", "Holds the small ballpoint at the end of the pen.", [80, 0, 0], [8, 4, 4], [158, 0, 0], metal, "x", { relatedKeys: ["nose", "ball"] }),
+    cylinder("ball", "Ballpoint", "point", "tip", "Tiny writing contact at the end of the refill.", [85, 0, 0], [3.5, 3.5, 3.5], [190, 0, 0], "#747d84", "x", { relatedKeys: ["point"] }),
+    box("clip", "Pocket Clip", "upperBarrel", "hardware", "Thin spring clip for attaching the pen to a pocket or notebook.", [-43, 10, 0], [42, 3.5, 5], [-68, 42, 0], metal, { rotation: [0, 0, -2], relatedKeys: ["upperBarrel"] }),
+    cylinder("refill", "Ink Refill", "lowerBarrel", "ink system", "Narrow internal tube carrying ink to the writing point.", [8, 0, 0], [118, 3.6, 3.6], [0, -48, 0], inkColor, "x", { relatedKeys: ["point", "spring"], detail: true }),
+    cylinder("spring", "Return Spring", "refill", "mechanism", "Small spring that returns the retractable refill.", [57, 0, 0], [18, 6, 6], [92, -58, 0], "#8f9aa2", "x", { relatedKeys: ["refill", "clicker"], detail: true }),
+  ];
+
+  if (retractable) {
+    specs.push(
+      cylinder("clicker", "Click Button", "upperBarrel", "mechanism", "Small rear button that extends and retracts the refill.", [-76, 0, 0], [14, 9, 9], [-142, 0, 0], metal, "x", { relatedKeys: ["upperBarrel", "spring"] }),
+      cylinder("cam", "Click Cam", "clicker", "mechanism", "Internal cam that locks the refill in and out.", [-66, 0, 0], [13, 7, 7], [-112, -44, 0], "#7b868e", "x", { relatedKeys: ["clicker", "spring"], detail: true }),
+    );
+  } else {
+    specs.push(cylinder("cap", "Pen Cap", "upperBarrel", "cover", "Removable cap that protects the writing tip.", [63, 0, 0], [48, 17, 17], [125, 55, 0], bodyColor, "x", { relatedKeys: ["nose", "clip"] }));
+  }
+
+  const name = retractable ? "Retractable Ballpoint Pen" : "Capped Pen";
+  return buildEverydayProject(name, prompt, specs, options);
+}
+
+function inferEverydayArchetype(prompt: string): EverydayArchetype | null {
+  const value = prompt.toLowerCase();
+  if (/\b(handheld|handle|grip|trigger|cordless|portable|drill|driver|dryer|sprayer|torch|flashlight|glue gun|heat gun|power tool)\b/.test(value)) return "handheld";
+  if (/\b(panel|collector|solar|sign|screen|filter|radiator|board|flat plate)\b/.test(value)) return "panel";
+  if (/\b(bottle|jar|cup|mug|canister|thermos|tank|vessel|container|kettle)\b/.test(value)) return "vessel";
+  if (/\b(stapler|clamp|hinge|hinged|press|tongs)\b/.test(value)) return "hinged";
+  return null;
+}
+
+function handheldProject(
+  prompt: string,
+  options: { scale?: number; detail?: DetailLevel },
+): ForgeProject {
+  const value = prompt.toLowerCase();
+  const bodyColor = colorFromPrompt(prompt, "#c99636");
+  const dark = "#2c3339";
+  const metal = "#aeb8c0";
+  const hasBattery = /\b(cordless|battery|drill|driver|power tool)\b/.test(value);
+  const longNozzle = /\b(dryer|sprayer|heat gun|glue gun|torch)\b/.test(value);
+  const outputLength = longNozzle ? 62 : 34;
+  const specs: EverydaySpec[] = [
+    box("body", "Main Body Housing", undefined, "housing", "Defines the primary handheld body silhouette.", [-10, -6, 0], [105, 52, 48], [0, 65, 0], bodyColor, { rotation: [0, 0, -7], relatedKeys: ["front", "handle"] }),
+    cylinder("front", "Front Barrel", "body", "housing", "Transitions the main body toward the working end.", [48, -1, 0], [42, 40, 40], [88, 35, 0], bodyColor, "x", { rotation: [0, 0, -7], relatedKeys: ["output"] }),
+    cylinder("output", "Working End", "front", "output", "Forms the tool or appliance output interface.", [78 + outputLength * 0.28, 1, 0], [outputLength, 26, 26], [145, 18, 0], dark, "x", { rotation: [0, 0, -7], relatedKeys: ["tip"] }),
+    cylinder("tip", "Output Tip", "output", "output", "Represents the smaller end feature at the front of the object.", [102 + outputLength * 0.55, 1, 0], [longNozzle ? 28 : 46, longNozzle ? 15 : 7, longNozzle ? 15 : 7], [205, 12, 0], metal, "x", { rotation: [0, 0, -7], relatedKeys: ["output"] }),
+    box("handle", "Angled Handle", "body", "grip", "Creates the pistol-grip or ergonomic handheld stance.", [-28, -55, 0], [36, 88, 40], [-25, -100, 0], bodyColor, { rotation: [0, 0, 18], relatedKeys: ["grip", "trigger"] }),
+    box("grip", "Grip Surface", "handle", "grip", "Adds a narrower hand-contact surface to the handle.", [-30, -63, 0], [29, 70, 35], [-38, -138, 0], dark, { rotation: [0, 0, 18], relatedKeys: ["handle"] }),
+    box("trigger", "Primary Control", "handle", "controls", "Places the main finger control beneath the body.", [-2, -29, 0], [15, 24, 17], [12, -42, 52], dark, { rotation: [0, 0, 10], relatedKeys: ["handle"] }),
+    box("switch", "Secondary Control", "body", "controls", "Adds a small secondary control near the grip transition.", [5, -18, 0], [20, 8, 18], [25, 18, 55], "#59636c", { relatedKeys: ["trigger"], detail: true }),
+    box("vent", "Vent Detail", "body", "cooling", "Breaks up the body shell with a small functional vent area.", [9, -2, -26], [30, 17, 4], [18, 38, -58], dark, { rotation: [0, 0, -7], detail: true }),
+  ];
+
+  if (hasBattery) {
+    specs.push(
+      box("powerBase", "Power Base", "handle", "power", "Provides a wider removable or integrated power base.", [-30, -111, 0], [58, 32, 52], [-28, -180, 0], dark, { relatedKeys: ["handle", "release"] }),
+      box("release", "Release Latch", "powerBase", "hardware", "Small latch detail on the power base.", [-4, -111, 0], [12, 11, 22], [18, -188, 48], metal, { relatedKeys: ["powerBase"], detail: true }),
+    );
+  }
+
+  return buildEverydayProject(titleFromPrompt(prompt), prompt, specs, options);
+}
+
+function panelProject(
+  prompt: string,
+  options: { scale?: number; detail?: DetailLevel },
+): ForgeProject {
+  const value = prompt.toLowerCase();
+  const panelColor = colorFromPrompt(prompt, /solar/.test(value) ? "#315a77" : "#c6d1d8");
+  const hasStand = /\b(collector|solar|sign|panel|display)\b/.test(value);
+  const specs: EverydaySpec[] = [
+    box("panel", "Primary Panel", undefined, "surface", "Defines the dominant thin rectangular surface.", [0, 0, 0], [205, 8, 112], [0, 80, 0], panelColor, { rotation: [0, 0, -18], relatedKeys: ["rear", "edge"] }),
+    box("rear", "Rear Layer", "panel", "structure", "Adds backing, insulation, or enclosure depth behind the surface.", [0, -10, 7], [196, 22, 102], [0, -70, 28], "#647484", { rotation: [0, 0, -18], relatedKeys: ["panel"] }),
+    box("edge", "Lower Edge Channel", "panel", "hardware", "Creates a functional lower rail, gutter, or trim channel.", [35, -59, 0], [190, 13, 18], [0, -105, 32], "#8b9eac", { rotation: [0, 0, -18], relatedKeys: ["panel"] }),
+    box("module", "Mounted Module", "rear", "component", "Represents a compact attached module used by the panel assembly.", [45, -12, 58], [30, 18, 14], [75, 20, 95], "#3c82b1", { relatedKeys: ["rear"], detail: true }),
+  ];
+  if (hasStand) {
+    specs.push(
+      box("leftLeg", "Left Support", "rear", "support", "Supports the panel at an operating angle.", [-72, -92, -32], [15, 120, 15], [-115, -110, -55], "#4d5d69", { rotation: [0, 0, 12], relatedKeys: ["crossbar"] }),
+      box("rightLeg", "Right Support", "rear", "support", "Supports the opposite side of the panel.", [62, -92, 32], [15, 120, 15], [110, -110, 55], "#4d5d69", { rotation: [0, 0, 12], relatedKeys: ["crossbar"] }),
+      box("crossbar", "Support Crossbar", "rear", "support", "Stiffens the freestanding support structure.", [-5, -135, 0], [150, 12, 12], [0, -150, 0], "#566977", { relatedKeys: ["leftLeg", "rightLeg"], detail: true }),
+    );
+  }
+  return buildEverydayProject(titleFromPrompt(prompt), prompt, specs, options);
+}
+
+function vesselProject(
+  prompt: string,
+  options: { scale?: number; detail?: DetailLevel },
+): ForgeProject {
+  const value = prompt.toLowerCase();
+  const bodyColor = colorFromPrompt(prompt, "#5d8eaa");
+  const tall = /\b(bottle|thermos|tank|canister)\b/.test(value);
+  const height = tall ? 150 : 98;
+  const width = tall ? 74 : 92;
+  const specs: EverydaySpec[] = [
+    cylinder("body", "Container Body", undefined, "container", "Defines the main hollow vessel silhouette.", [0, 0, 0], [width, height, width], [0, 55, 0], bodyColor, "y", { relatedKeys: ["neck", "base"] }),
+    cylinder("neck", "Upper Neck", "body", "container", "Narrows the vessel toward its opening.", [0, height * 0.47, 0], [width * 0.58, 28, width * 0.58], [0, 115, 0], bodyColor, "y", { relatedKeys: ["cap"] }),
+    cylinder("cap", "Cap or Rim", "neck", "closure", "Closes or finishes the vessel opening.", [0, height * 0.61, 0], [width * 0.64, 18, width * 0.64], [0, 160, 0], "#30383f", "y", { relatedKeys: ["neck"] }),
+    cylinder("base", "Base Ring", "body", "support", "Provides a stable lower contact surface.", [0, -height * 0.51, 0], [width * 0.9, 12, width * 0.9], [0, -105, 0], "#45535e", "y", { relatedKeys: ["body"] }),
+    box("label", "Surface Detail", "body", "surface", "Adds a small front-facing label or control area.", [0, 0, width * 0.51], [width * 0.5, height * 0.3, 3], [0, 0, 95], "#d4dde2", { detail: true }),
+  ];
+  if (/\b(mug|cup|kettle)\b/.test(value)) {
+    specs.push(box("handle", "Side Handle", "body", "grip", "Provides a side grip for lifting the vessel.", [width * 0.62, 2, 0], [22, height * 0.55, 18], [95, 0, 0], "#4b5964", { relatedKeys: ["body"] }));
+  }
+  return buildEverydayProject(titleFromPrompt(prompt), prompt, specs, options);
+}
+
+function hingedProject(
+  prompt: string,
+  options: { scale?: number; detail?: DetailLevel },
+): ForgeProject {
+  const bodyColor = colorFromPrompt(prompt, "#667d8d");
+  const specs: EverydaySpec[] = [
+    box("base", "Lower Base", undefined, "structure", "Forms the stable lower half of a hinged mechanism.", [0, -28, 0], [150, 22, 48], [0, -85, 0], "#414c55", { relatedKeys: ["hinge", "upper"] }),
+    box("upper", "Upper Arm", "base", "mechanism", "Forms the moving upper half of the hinged object.", [5, 2, 0], [142, 24, 42], [0, 105, 0], bodyColor, { rotation: [0, 0, -8], relatedKeys: ["hinge", "contact"] }),
+    cylinder("hinge", "Pivot Hinge", "base", "mechanism", "Joins the upper arm to the base around a pivot.", [-66, -15, 0], [22, 44, 44], [-120, 0, 0], "#aeb8c0", "x", { relatedKeys: ["base", "upper"] }),
+    box("contact", "Working Contact", "upper", "output", "Creates the small functional contact area at the front.", [67, -5, 0], [15, 26, 30], [118, 70, 0], "#2f363b", { relatedKeys: ["upper", "base"] }),
+    box("spring", "Return Element", "hinge", "mechanism", "Represents the compact return spring or spacer near the pivot.", [-42, -7, 0], [22, 13, 20], [-72, 52, 0], "#c3a35c", { detail: true }),
+  ];
+  return buildEverydayProject(titleFromPrompt(prompt), prompt, specs, options);
+}
+
+function addSpatial(purpose: string, spatial: string) {
+  return `${purpose} Spatial relationship: ${spatial}.`;
+}
+
+function hasCoreGenericFallback(project: ForgeProject) {
+  const names = new Set(project.parts.map((part) => part.name));
+  return (
+    names.has("Main Frame") &&
+    names.has("Outer Body") &&
+    names.has("Drive Core") &&
+    names.has("Control Module") &&
+    names.has("Output Module")
+  );
+}
+
+function windowAcSpecs(prompt: string): EverydaySpec[] {
+  const body = colorFromPrompt(prompt, "#d9dde0");
+  const dark = "#2f363b";
+  const metal = "#8fa1aa";
+  return [
+    box("cabinet", "Sleeve Cabinet", undefined, "housing", addSpatial("Forms the rectangular wall sleeve around the air conditioner.", "surrounding the internal thermal path and bridging room-side front to outdoor rear"), [0, 0, 0], [190, 82, 112], [0, 0, -135], body, { relatedKeys: ["frontGrille", "condenserCoil", "mountRail"] }),
+    box("frontGrille", "Front Intake Grille", "cabinet", "input", addSpatial("Admits room air into the unit.", "attached to the front face, outside the filter"), [0, 0, 61], [178, 62, 7], [0, 0, 118], dark, { relatedKeys: ["airFilter", "blowerFan"] }),
+    box("airFilter", "Slide-Out Air Filter", "frontGrille", "input", addSpatial("Captures dust before air reaches the cold coil.", "inside the front grille and in front of the evaporator coil"), [0, -1, 52], [160, 49, 5], [-115, 0, 88], "#cdd6db", { relatedKeys: ["evaporatorCoil"], detail: true }),
+    box("evaporatorCoil", "Evaporator Coil", "cabinet", "thermal", addSpatial("Absorbs heat from indoor air.", "behind the filter, above the condensate tray, and connected to the compressor"), [-34, 4, 31], [78, 58, 11], [-84, 32, 55], "#74a7bd", { relatedKeys: ["compressor", "blowerFan"] }),
+    cylinder("blowerFan", "Crossflow Blower Fan", "cabinet", "motion", addSpatial("Pulls room air through the filter and pushes cooled air out.", "mounted horizontally behind the front grille and below the control panel"), [38, -5, 34], [92, 20, 20], [88, -16, 65], "#56636b", "x", { relatedKeys: ["frontGrille", "evaporatorCoil"] }),
+    cylinder("compressor", "Sealed Compressor", "cabinet", "power", addSpatial("Compresses refrigerant for the cooling loop.", "inside the lower rear compartment and connected between both coils"), [-48, -26, -24], [44, 44, 48], [-96, -72, -42], "#30383f", "y", { relatedKeys: ["evaporatorCoil", "condenserCoil"] }),
+    box("condenserCoil", "Rear Condenser Coil", "cabinet", "thermal", addSpatial("Rejects absorbed heat outdoors.", "at the back face, behind the compressor and in front of the exhaust louvers"), [34, 1, -53], [86, 58, 10], [96, 16, -112], metal, { relatedKeys: ["compressor", "rearLouver"] }),
+    box("rearLouver", "Rear Exhaust Louver", "cabinet", "output", addSpatial("Lets hot air leave the outdoor side.", "attached outside the rear face behind the condenser coil"), [0, 0, -64], [178, 64, 7], [0, 0, -166], dark, { relatedKeys: ["condenserCoil"] }),
+    box("controlPanel", "Control Panel", "frontGrille", "control", addSpatial("Houses buttons, display, and thermostat controls.", "on the upper front edge, above the blower outlet"), [63, 31, 66], [52, 16, 8], [106, 78, 122], "#3b7799", { relatedKeys: ["blowerFan"], detail: true }),
+    box("mountRail", "Side Mounting Rails", "cabinet", "support", addSpatial("Supports the cabinet in a window opening.", "attached along both lower outside edges"), [0, -50, 0], [206, 12, 122], [0, -118, 0], "#788690", { relatedKeys: ["cabinet"], detail: true }),
+  ];
+}
+
+function drillSpecs(prompt: string): EverydaySpec[] {
+  const body = colorFromPrompt(prompt, "#d2a237");
+  const dark = "#2d3338";
+  const metal = "#aeb8c0";
+  return [
+    box("housing", "Drill Motor Housing", undefined, "housing", addSpatial("Contains the motor and gears in a pistol-shaped body.", "above the handle and behind the chuck"), [-12, 8, 0], [102, 48, 46], [0, 70, 0], body, { rotation: [0, 0, -6], relatedKeys: ["gearbox", "handle"] }),
+    cylinder("gearbox", "Front Gearbox Collar", "housing", "motion", addSpatial("Steps motor speed down before the chuck.", "concentric with the chuck at the front of the housing"), [49, 10, 0], [34, 38, 38], [93, 42, 0], metal, "x", { rotation: [0, 0, -6], relatedKeys: ["chuck", "motor"] }),
+    cylinder("chuck", "Keyless Chuck", "gearbox", "output", addSpatial("Clamps the drill bit at the working end.", "attached to the front of the gearbox and coaxial with the bit"), [82, 10, 0], [37, 24, 24], [158, 24, 0], dark, "x", { rotation: [0, 0, -6], relatedKeys: ["bit"] }),
+    cylinder("bit", "Drill Bit", "chuck", "output", addSpatial("Represents the removable cutting tool.", "projecting forward from the chuck"), [119, 10, 0], [50, 6, 6], [220, 12, 0], metal, "x", { rotation: [0, 0, -6], detail: true }),
+    cylinder("motor", "Electric Motor", "housing", "power", addSpatial("Provides rotary drive for drilling.", "inside the rear housing and connected to the gearbox"), [-18, 8, 0], [48, 28, 28], [-54, 18, 0], "#59646c", "x", { relatedKeys: ["gearbox", "batteryPack"], detail: true }),
+    box("handle", "Angled Grip Handle", "housing", "support", addSpatial("Positions the hand below the motor body.", "below and slightly behind the housing"), [-32, -46, 0], [34, 84, 38], [-38, -106, 0], body, { rotation: [0, 0, 16], relatedKeys: ["trigger", "batteryPack"] }),
+    box("trigger", "Variable-Speed Trigger", "handle", "control", addSpatial("Controls motor speed with finger pressure.", "inside the front of the handle, below the housing"), [-7, -27, 0], [13, 25, 16], [14, -46, 50], dark, { rotation: [0, 0, 11], relatedKeys: ["motor"] }),
+    box("batteryPack", "Slide-On Battery Pack", "handle", "power", addSpatial("Supplies removable cordless power.", "attached below the handle as the lowest mass"), [-30, -101, 0], [61, 31, 54], [-30, -176, 0], dark, { relatedKeys: ["handle", "motor"] }),
+    box("vent", "Cooling Vents", "housing", "thermal", addSpatial("Lets motor heat escape.", "on the side wall beside the hidden motor"), [3, 12, -26], [34, 16, 4], [24, 42, -58], "#22282d", { detail: true }),
+  ];
+}
+
+function coffeeMakerSpecs(prompt: string): EverydaySpec[] {
+  const body = colorFromPrompt(prompt, "#48545d");
+  return [
+    box("housing", "Countertop Brewer Housing", undefined, "housing", addSpatial("Forms the upright body of the coffee maker.", "behind the carafe and surrounding the heating and water path"), [0, 14, 0], [118, 142, 78], [0, 70, -86], body, { relatedKeys: ["reservoir", "brewBasket", "warmingPlate"] }),
+    box("reservoir", "Water Reservoir", "housing", "fluid", addSpatial("Stores incoming water before brewing.", "inside the rear upper housing above the heater tube"), [-33, 42, -12], [42, 76, 46], [-85, 82, -50], "#7fa9be", { relatedKeys: ["heater", "brewBasket"] }),
+    cylinder("heater", "Heating Element", "housing", "thermal", addSpatial("Heats water before it rises to the brew head.", "below the reservoir and inside the base"), [-31, -43, 0], [60, 12, 12], [-72, -92, 0], "#b77442", "x", { relatedKeys: ["reservoir", "warmingPlate"], detail: true }),
+    box("brewBasket", "Brew Basket", "housing", "input", addSpatial("Holds the filter and ground coffee.", "front upper bay above the carafe mouth"), [24, 37, 44], [60, 34, 28], [74, 74, 90], "#2f363b", { relatedKeys: ["dripSpout", "carafe"] }),
+    cylinder("dripSpout", "Drip Spout", "brewBasket", "output", addSpatial("Directs brewed coffee downward.", "below the brew basket and above the carafe opening"), [24, 12, 55], [18, 8, 8], [75, 20, 128], "#c0c9cf", "y", { relatedKeys: ["carafe"] }),
+    box("warmingPlate", "Warming Plate", "housing", "thermal", addSpatial("Keeps the carafe warm.", "on the lower front base directly below the carafe"), [22, -53, 42], [76, 9, 58], [55, -116, 78], "#20272c", { relatedKeys: ["carafe", "heater"] }),
+    box("carafe", "Glass Carafe", "warmingPlate", "vessel", addSpatial("Collects brewed coffee.", "outside the front housing, sitting on the warming plate"), [22, -17, 47], [70, 62, 52], [82, -28, 122], "#adc8d4", { relatedKeys: ["handle", "dripSpout"] }),
+    box("handle", "Carafe Handle", "carafe", "support", addSpatial("Provides a grip for pouring.", "attached to the outside right side of the carafe"), [63, -17, 47], [18, 48, 14], [134, -18, 118], "#2f363b", { relatedKeys: ["carafe"] }),
+    box("controlPanel", "Brew Control Panel", "housing", "control", addSpatial("Houses buttons and indicators.", "on the front face beside the brew basket"), [-31, 3, 43], [38, 24, 7], [-70, 5, 96], "#3d7795", { detail: true }),
+  ];
+}
+
+function printerSpecs(prompt: string): EverydaySpec[] {
+  const body = colorFromPrompt(prompt, "#d5d9dc");
+  const dark = "#343b42";
+  return [
+    box("chassis", "Printer Chassis", undefined, "housing", addSpatial("Forms the low rectangular desktop printer body.", "surrounding the paper path from lower front tray to upper output tray"), [0, 0, 0], [190, 62, 128], [0, 0, -120], body, { relatedKeys: ["paperTray", "scannerLid", "outputTray"] }),
+    box("paperTray", "Front Paper Tray", "chassis", "input", addSpatial("Feeds blank paper into the machine.", "sliding out from the lower front face"), [0, -29, 76], [158, 18, 74], [0, -64, 148], "#bcc5ca", { relatedKeys: ["feedRoller"] }),
+    cylinder("feedRoller", "Paper Feed Roller", "chassis", "motion", addSpatial("Pulls sheets from the tray through the print path.", "inside the lower front bay above the paper tray"), [0, -15, 38], [136, 13, 13], [0, -38, 82], dark, "x", { relatedKeys: ["paperTray", "printHead"] }),
+    box("printHead", "Print Head Carriage", "chassis", "output", addSpatial("Moves ink across the page.", "inside the middle bay spanning left to right above the paper path"), [0, 2, 10], [118, 22, 20], [0, 18, 58], "#52606a", { relatedKeys: ["inkCartridge", "feedRoller"] }),
+    box("inkCartridge", "Ink Cartridge Set", "printHead", "fluid", addSpatial("Stores colored ink for the print head.", "mounted on top of the moving print head carriage"), [36, 18, 10], [48, 20, 22], [76, 48, 60], "#2e6f93", { relatedKeys: ["printHead"] }),
+    box("outputTray", "Output Tray", "chassis", "output", addSpatial("Catches printed sheets.", "extending from the upper front face above the input tray"), [0, 18, 86], [154, 11, 72], [0, 64, 155], "#aeb8be", { relatedKeys: ["paperTray"] }),
+    box("scannerLid", "Flatbed Scanner Lid", "chassis", "structure", addSpatial("Covers the scanner glass on multifunction printers.", "hinged on the top surface above the chassis"), [0, 40, -5], [182, 16, 118], [0, 112, -15], "#eef1f2", { relatedKeys: ["hinge"] }),
+    cylinder("hinge", "Rear Lid Hinge", "scannerLid", "motion", addSpatial("Lets the scanner lid open.", "along the rear edge of the top lid"), [0, 32, -70], [168, 10, 10], [0, 74, -132], dark, "x", { relatedKeys: ["scannerLid"], detail: true }),
+    box("controlPanel", "Status Control Panel", "chassis", "control", addSpatial("Shows printer status and accepts controls.", "on the upper front right corner"), [64, 39, 66], [48, 12, 18], [110, 91, 122], "#3b7894", { detail: true }),
+  ];
+}
+
+function pumpSpecs(prompt: string): EverydaySpec[] {
+  const body = colorFromPrompt(prompt, "#5f7f92");
+  const dark = "#293138";
+  return [
+    cylinder("barrel", "Pump Barrel", undefined, "fluid", addSpatial("Compresses air as the plunger moves.", "vertical center tube between the base and handle"), [0, 5, 0], [36, 144, 36], [0, 20, 0], body, "y", { relatedKeys: ["plungerRod", "baseFoot", "hose"] }),
+    cylinder("plungerRod", "Plunger Rod", "barrel", "motion", addSpatial("Transfers handle motion into the barrel.", "concentric inside the pump barrel and extending above it"), [0, 83, 0], [12, 120, 12], [0, 146, 0], "#b7c0c6", "y", { relatedKeys: ["handle", "barrel"] }),
+    box("handle", "T-Handle Grip", "plungerRod", "support", addSpatial("Gives both hands leverage for pumping.", "attached across the top of the plunger rod"), [0, 148, 0], [112, 18, 24], [0, 222, 0], dark, { relatedKeys: ["plungerRod"] }),
+    box("baseFoot", "Wide Base Foot", "barrel", "support", addSpatial("Stabilizes the pump under foot pressure.", "attached below the vertical barrel at floor level"), [0, -78, 0], [118, 12, 54], [0, -144, 0], dark, { relatedKeys: ["barrel"] }),
+    cylinder("hose", "Flexible Air Hose", "barrel", "fluid", addSpatial("Carries compressed air to the tire valve.", "connected near the lower barrel and curving outward to the side"), [54, -42, 0], [72, 9, 9], [124, -82, 35], "#20262b", "x", { rotation: [0, 0, -22], relatedKeys: ["valveChuck"] }),
+    cylinder("valveChuck", "Valve Chuck", "hose", "fastener", addSpatial("Locks onto a bicycle tire valve.", "attached to the free end of the hose"), [98, -70, 0], [24, 15, 15], [178, -122, 46], "#c4a24d", "x", { relatedKeys: ["hose"] }),
+    cylinder("gauge", "Pressure Gauge", "barrel", "control", addSpatial("Displays tire pressure during pumping.", "mounted on the front of the lower barrel"), [0, -37, 22], [34, 10, 34], [0, -72, 72], "#e6edf0", "z", { relatedKeys: ["barrel"], detail: true }),
+  ];
+}
+
+function blenderSpecs(prompt: string): EverydaySpec[] {
+  const base = colorFromPrompt(prompt, "#656f77");
+  return [
+    box("motorBase", "Motor Base", undefined, "power", addSpatial("Houses the electric motor and supports the pitcher.", "below the pitcher and surrounding the drive coupler"), [0, -48, 0], [104, 64, 86], [0, -126, 0], base, { relatedKeys: ["pitcher", "controlPanel", "driveCoupler"] }),
+    cylinder("driveCoupler", "Drive Coupler", "motorBase", "motion", addSpatial("Transfers motor torque into the blades.", "centered on top of the base and concentric with the blade hub"), [0, -10, 0], [34, 16, 34], [0, -34, 0], "#2b333a", "y", { relatedKeys: ["bladeAssembly"] }),
+    box("pitcher", "Clear Pitcher Jar", "motorBase", "vessel", addSpatial("Contains ingredients during blending.", "above the motor base and surrounding the blade assembly"), [0, 35, 0], [92, 112, 78], [0, 76, 0], "#9dc2d1", { relatedKeys: ["bladeAssembly", "lid", "jarHandle"] }),
+    cylinder("bladeAssembly", "Blade Assembly", "pitcher", "output", addSpatial("Chops and circulates contents.", "inside the bottom of the pitcher and attached to the drive coupler"), [0, -10, 0], [58, 8, 58], [0, 5, 0], "#c0c8ce", "y", { relatedKeys: ["driveCoupler"], detail: true }),
+    box("lid", "Pitcher Lid", "pitcher", "housing", addSpatial("Closes the top of the jar.", "attached above the pitcher opening"), [0, 98, 0], [98, 14, 82], [0, 166, 0], "#2c3339", { relatedKeys: ["capPlug"] }),
+    cylinder("capPlug", "Center Cap Plug", "lid", "input", addSpatial("Lets ingredients be added through the lid.", "concentric in the top lid"), [0, 109, 0], [30, 12, 30], [0, 196, 0], "#444d55", "y", { detail: true }),
+    box("jarHandle", "Pitcher Handle", "pitcher", "support", addSpatial("Provides a side grip for lifting and pouring.", "attached to the outside right wall of the pitcher"), [58, 35, 0], [18, 74, 20], [118, 72, 0], "#2f363b", { relatedKeys: ["pitcher"] }),
+    box("controlPanel", "Speed Control Panel", "motorBase", "control", addSpatial("Selects blending speeds.", "on the front face of the motor base"), [0, -43, 48], [58, 24, 7], [0, -94, 106], "#3b7894", { relatedKeys: ["motorBase"], detail: true }),
+  ];
+}
+
+function defaultUnknownSpecs(prompt: string): EverydaySpec[] {
+  const name = titleFromPrompt(prompt);
+  const body = colorFromPrompt(prompt, "#6e7d88");
+  const lower = name.toLowerCase();
+  return [
+    box("outerShell", `${name} Outer Shell`, undefined, "housing", addSpatial(`Protects the major ${lower} subsystems.`, "surrounding the internal structure and presenting the recognizable exterior"), [0, 0, 0], [150, 82, 92], [0, 0, -118], body, { relatedKeys: ["supportFrame", "inputInterface", "outputInterface"] }),
+    box("supportFrame", `${name} Internal Support Frame`, "outerShell", "structure", addSpatial(`Keeps the ${lower} aligned under use.`, "inside the shell and attached to the lower base"), [0, -6, -4], [128, 58, 72], [0, -42, -38], "#53616b", { relatedKeys: ["outerShell", "functionalCore"] }),
+    cylinder("functionalCore", `${name} Functional Core`, "supportFrame", "motion", addSpatial(`Represents the primary working mechanism of the ${lower}.`, "inside the support frame and connected between input and output interfaces"), [-28, 1, 4], [52, 36, 36], [-86, 10, 12], "#d19a48", "x", { relatedKeys: ["inputInterface", "outputInterface"] }),
+    box("inputInterface", `${name} Input Interface`, "outerShell", "input", addSpatial(`Shows where material, force, or user intent enters the ${lower}.`, "attached to the front-left exterior and connected to the core"), [-46, 16, 50], [54, 28, 9], [-102, 42, 98], "#cbd4da", { relatedKeys: ["functionalCore"] }),
+    box("outputInterface", `${name} Output Interface`, "outerShell", "output", addSpatial(`Shows where the ${lower} produces its result.`, "attached to the front-right exterior and connected from the core"), [47, -9, 50], [54, 28, 9], [106, -24, 100], "#b5c4cc", { relatedKeys: ["functionalCore"] }),
+    box("controlArea", `${name} Control Area`, "outerShell", "control", addSpatial(`Provides user control for the ${lower}.`, "on the upper exterior surface, above the core"), [38, 39, 38], [48, 14, 10], [84, 90, 82], "#3c7fa0", { relatedKeys: ["functionalCore"], detail: true }),
+    box("baseSupport", `${name} Base Support`, "supportFrame", "support", addSpatial(`Stabilizes the ${lower} during operation.`, "below the shell and attached to the frame"), [0, -53, 0], [118, 14, 78], [0, -120, 0], "#424c55", { relatedKeys: ["supportFrame"] }),
+    cylinder("serviceFastener", `${name} Service Fastener`, "outerShell", "fastener", addSpatial(`Represents removable hardware for servicing the ${lower}.`, "on the outer shell near a panel edge"), [-62, 32, 48], [12, 12, 12], [-120, 80, 92], "#d7dde2", "z", { relatedKeys: ["outerShell"], detail: true }),
+  ];
+}
+
+function inferGeneralUnknownSpecs(prompt: string): EverydaySpec[] {
+  const value = prompt.toLowerCase();
+  if (/\b(window|room|portable)?\s*(unit\s*)?(air\s*conditioner|ac\b|a\/c|hvac)\b/.test(value)) return windowAcSpecs(prompt);
+  if (/\b(cordless\s*)?(drill|driver|power\s*drill)\b/.test(value)) return drillSpecs(prompt);
+  if (/\b(coffee\s*maker|coffee\s*machine|brewer|drip\s*coffee)\b/.test(value)) return coffeeMakerSpecs(prompt);
+  if (/\b(desktop\s*)?(printer|scanner\s*printer|inkjet|laser\s*printer)\b/.test(value)) return printerSpecs(prompt);
+  if (/\b(bicycle|bike)?\s*(pump|floor\s*pump|tire\s*pump)\b/.test(value)) return pumpSpecs(prompt);
+  if (/\b(blender|food\s*processor|smoothie\s*maker)\b/.test(value)) return blenderSpecs(prompt);
+  return defaultUnknownSpecs(prompt);
+}
+
+function matchesGeneralUnknownProfile(prompt: string) {
+  const value = prompt.toLowerCase();
+  return (
+    /\b(window|room|portable)?\s*(unit\s*)?(air\s*conditioner|ac\b|a\/c|hvac)\b/.test(value) ||
+    /\b(cordless\s*)?(drill|driver|power\s*drill)\b/.test(value) ||
+    /\b(coffee\s*maker|coffee\s*machine|brewer|drip\s*coffee)\b/.test(value) ||
+    /\b(desktop\s*)?(printer|scanner\s*printer|inkjet|laser\s*printer)\b/.test(value) ||
+    /\b(bicycle|bike)?\s*(pump|floor\s*pump|tire\s*pump)\b/.test(value) ||
+    /\b(blender|food\s*processor|smoothie\s*maker)\b/.test(value)
+  );
+}
+
+function generalUnknownProject(
+  prompt: string,
+  options: { scale?: number; detail?: DetailLevel },
+): ForgeProject {
+  const project = buildEverydayProject(titleFromPrompt(prompt), prompt, inferGeneralUnknownSpecs(prompt), options);
+  project.history = [`General semantic decomposition: ${project.name}`];
+  return project;
+}
+
+function matchesDresser(prompt: string) {
+  return /\b(dresser|chest of drawers|nightstand|bedside cabinet)\b/i.test(prompt);
+}
+
+function matchesPen(prompt: string) {
+  return /\b(ballpoint|retractable pen|click pen|ink pen|pen)\b/i.test(prompt);
 }
 
 export function createForgeProject(
@@ -496,214 +554,24 @@ export function createForgeProject(
   options: { scale?: number; detail?: DetailLevel } = {},
 ): ForgeProject {
   const cleaned = prompt.trim() || "A-72 bowling machine";
-  const scale = Math.max(0.5, Math.min(1.8, options.scale ?? 1));
-  const detail = options.detail ?? "detailed";
-  const recipe = matchRecipe(cleaned);
-  return specsToProject(
-    recipe ?? genericRecipe(cleaned),
-    cleaned,
-    scale,
-    detail,
-    recipe?.source ?? (recipe ? "recovered-recipe" : "procedural-concept"),
-  );
-}
+  if (matchesDresser(cleaned)) return dresserProject(cleaned, options);
+  if (matchesPen(cleaned)) return penProject(cleaned, options);
+  if (matchesGeneralUnknownProfile(cleaned)) return generalUnknownProject(cleaned, options);
 
-export function validateForgeProject(project: ForgeProject): ValidationCheck[] {
-  const ids = project.parts.map((part) => part.id);
-  const idSet = new Set(ids);
-  const stableIds = ids.every((id) => /^COMP-\d{6}$/.test(id));
+  const coreProject = createCoreForgeProject(cleaned, options);
+  if (!hasCoreGenericFallback(coreProject)) return coreProject;
 
-  const hasCycle = project.parts.some((part) => {
-    const visited = new Set<string>();
-    let current: ForgePart | undefined = part;
-    while (current?.parent) {
-      if (visited.has(current.parent)) return true;
-      visited.add(current.parent);
-      current = project.parts.find((candidate) => candidate.id === current?.parent);
-    }
-    return false;
-  });
-
-  return [
-    { id: "format", label: "Versioned project format", ok: project.format === "ShapeForge Project" && project.formatVersion === 2 },
-    { id: "project", label: "Stable project identity", ok: /^PROJ-\d{6}$/.test(project.id) },
-    { id: "ids", label: "Unique stable component IDs", ok: stableIds && idSet.size === ids.length },
-    { id: "parents", label: "Parent references resolved", ok: project.parts.every((part) => part.parent === null || idSet.has(part.parent)) },
-    { id: "cycles", label: "Hierarchy contains no cycles", ok: !hasCycle },
-    { id: "relations", label: "Relationship endpoints resolved", ok: project.parts.every((part) => part.related.every((id) => idSet.has(id))) },
-    { id: "self", label: "No self relationships", ok: project.parts.every((part) => !part.related.includes(part.id) && part.parent !== part.id) },
-    { id: "geometry", label: "Geometry is finite and positive", ok: project.parts.every((part) => part.size.every((value) => Number.isFinite(value) && value > 0) && part.position.every(Number.isFinite)) },
-    { id: "metadata", label: "Required metadata present", ok: project.parts.every((part) => Boolean(part.name && part.category && part.purpose && part.color)) },
-  ];
-}
-
-export function nextComponentId(project: ForgeProject) {
-  return componentId(project.allocator.nextComponent);
-}
-
-function loosePartsToProject(
-  name: string,
-  prompt: string,
-  looseParts: Array<{
-    key: string;
-    name?: string;
-    kind?: PrimitiveKind;
-    axis?: CylinderAxis;
-    parentKey?: string;
-    category?: string;
-    purpose?: string;
-    position?: Vec3;
-    size?: Vec3;
-    rotation?: Vec3;
-    explode?: Vec3;
-    relatedKeys?: string[];
-    color?: string;
-  }>,
-): ForgeProject {
-  const specs: PartSpec[] = looseParts.map((part) => ({
-    key: part.key,
-    name: part.name || part.key,
-    kind: part.kind || "box",
-    axis: part.axis,
-    parentKey: part.parentKey,
-    category: part.category || "component",
-    purpose: part.purpose || "Imported ShapeForge component.",
-    position: part.position || [0, 0, 0],
-    size: part.size || [40, 40, 40],
-    rotation: part.rotation || [0, 0, 0],
-    explode: part.explode || [0, 0, 80],
-    relatedKeys: part.relatedKeys || [],
-    color: part.color || "#6f8192",
-  }));
-  const project = specsToProject({ name, specs }, prompt, 1, "detailed", "imported");
-  project.history = [`Imported and upgraded ${name} to ShapeForge v2`];
-  return project;
-}
-
-const asVec3 = (value: unknown, fallback: Vec3): Vec3 => {
-  if (!Array.isArray(value) || value.length < 3) return fallback;
-  const parsed = value.slice(0, 3).map(Number);
-  return parsed.every(Number.isFinite) ? (parsed as Vec3) : fallback;
-};
-
-export function importForgeProject(value: unknown): ForgeProject {
-  if (!value || typeof value !== "object") throw new Error("The file does not contain a project object.");
-  const data = value as Record<string, unknown>;
-
-  if (data.formatVersion === 2 && Array.isArray(data.parts)) {
-    const rawParts = data.parts as Array<Record<string, unknown>>;
-    const keys = new Set(rawParts.map((part, index) => String(part.id ?? `legacy-${index}`)));
-    const project = loosePartsToProject(
-      String(data.name ?? "Imported ShapeForge Project"),
-      String(data.prompt ?? data.name ?? "Imported project"),
-      rawParts.map((part, index) => ({
-        key: String(part.id ?? `legacy-${index}`),
-        name: String(part.name ?? `Component ${index + 1}`),
-        kind: part.kind === "cylinder" ? "cylinder" : "box",
-        axis: part.axis === "x" || part.axis === "y" || part.axis === "z" ? part.axis : undefined,
-        parentKey: part.parent && keys.has(String(part.parent)) ? String(part.parent) : undefined,
-        category: String(part.category ?? "component"),
-        purpose: String(part.purpose ?? "Imported ShapeForge component."),
-        position: asVec3(part.position, [0, 0, 0]),
-        size: asVec3(part.size, [40, 40, 40]),
-        rotation: asVec3(part.rotation, [0, 0, 0]),
-        explode: asVec3(part.explode, [0, 0, 80]),
-        relatedKeys: Array.isArray(part.related) ? part.related.map(String).filter((id) => keys.has(id)) : [],
-        color: String(part.color ?? "#6f8192"),
-      })),
-    );
-    project.history = Array.isArray(data.history)
-      ? [...data.history.map(String), "Validated and loaded in ShapeForge v2"]
-      : ["Loaded ShapeForge v2 project"];
-    return project;
-  }
-
-  if (data.format === "ShapeForge Project" && Array.isArray(data.parts)) {
-    const rawParts = data.parts as Array<Record<string, unknown>>;
-    const keys = new Set(rawParts.map((part, index) => String(part.id ?? `legacy-${index}`)));
-    return loosePartsToProject(
-      String(data.root ?? data.objectType ?? "Legacy ShapeForge Project"),
-      String(data.objectType ?? "Imported legacy project"),
-      rawParts.map((part, index) => ({
-        key: String(part.id ?? `legacy-${index}`),
-        name: String(part.name ?? `Component ${index + 1}`),
-        parentKey: part.parent && keys.has(String(part.parent)) ? String(part.parent) : undefined,
-        category: String(part.category ?? "component"),
-        purpose: String(part.purpose ?? "Imported legacy component."),
-        position: asVec3(part.pos, [0, 0, 0]),
-        size: asVec3(part.size, [40, 40, 40]),
-        explode: asVec3(part.explodeVector, [0, 0, 80]),
-        relatedKeys: Array.isArray(part.related) ? part.related.map(String).filter((id) => keys.has(id)) : [],
-        color: String(part.color ?? "#6f8192"),
-      })),
-    );
-  }
-
-  if (data.format_version === 1 && Array.isArray(data.components)) {
-    const components = data.components as Array<Record<string, unknown>>;
-    return loosePartsToProject(
-      String((data.project as Record<string, unknown> | undefined)?.name ?? "Shaft / Bearing Assembly"),
-      "Imported v1 component registry",
-      components.map((part, index) => {
-        const length = Math.max(1, Number(part.length ?? 40));
-        const radius = Math.max(1, Number(part.radius ?? 20));
-        return {
-          key: String(part.id ?? `legacy-${index}`),
-          name: String(part.name ?? `Component ${index + 1}`),
-          kind: "cylinder" as const,
-          axis: "x" as const,
-          category: String(part.type ?? "component"),
-          purpose: "Imported from the recovered ShapeForge v1 registry.",
-          position: [Number(part.x ?? 0), Number(part.y ?? 0), Number(part.z ?? 0)] as Vec3,
-          size: [length, radius * 2, radius * 2] as Vec3,
-          explode: [Number(part.x ?? 0) < 0 ? -120 : Number(part.x ?? 0) > 0 ? 120 : 0, 0, 0] as Vec3,
-          color: part.type === "bearing" ? "#d49a4d" : "#8495a6",
-        };
-      }),
-    );
-  }
-
-  if (data.parts && typeof data.parts === "object" && !Array.isArray(data.parts)) {
-    const entries = Object.entries(data.parts as Record<string, Record<string, unknown>>);
-    return loosePartsToProject(
-      String(data.name ?? "Recovered Prompt Prototype"),
-      String(data.name ?? "Imported prompt prototype"),
-      entries.map(([key, part]) => {
-        const kind = part.kind === "cyl" || part.kind === "cylinder" ? "cylinder" : "box";
-        const radius = Number(part.r ?? 20);
-        return {
-          key,
-          name: key,
-          kind,
-          axis: kind === "cylinder" ? "z" : undefined,
-          parentKey: part.parent ? String(part.parent) : undefined,
-          category: "component",
-          purpose: "Imported from the recovered prompt-driven prototype.",
-          position: [Number(part.x ?? 0), Number(part.y ?? 0), Number(part.z ?? 0)] as Vec3,
-          size: kind === "cylinder"
-            ? [radius * 2, radius * 2, Number(part.d ?? 20)] as Vec3
-            : [Number(part.w ?? 40), Number(part.h ?? 40), Number(part.d ?? 40)] as Vec3,
-          explode: [Number(part.x ?? 0), Number(part.y ?? 0), Number(part.z ?? 80)] as Vec3,
-          color: "#6f8192",
-        };
-      }),
-    );
-  }
-
-  throw new Error("This is not a supported ShapeForge project file.");
+  return generalUnknownProject(cleaned, options);
 }
 
 export const samplePrompts = [
-  "A-72 bowling machine",
-  "1969 Chevrolet Chevelle SS",
-  "1969 Ford Mustang fastback",
-  "desk fan",
-  "bicycle",
-  "television",
-  "desktop PC",
-  "wheel assembly",
-  "table",
-  "chair",
-  "desk lamp",
-  "shaft with two bearings",
+  "six drawer walnut dresser with brass pulls",
+  "blue retractable ballpoint pen with a pocket clip",
+  "white 3 drawer nightstand with round knobs",
+  "cordless handheld drill",
+  "portable hair dryer with handle",
+  "passive flat panel collector with support frame",
+  "steel reusable bottle with cap",
+  "desktop stapler",
+  ...coreSamplePrompts,
 ];
