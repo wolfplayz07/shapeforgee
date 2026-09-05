@@ -32,36 +32,71 @@ test("Worker /api/forge uses server-side Workers AI binding when available", asy
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
   const calls = [];
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (message, ...args) => {
+    if (typeof message === "string") {
+      try {
+        logs.push(JSON.parse(message));
+      } catch {
+        originalLog(message, ...args);
+      }
+      return;
+    }
+    originalLog(message, ...args);
+  };
 
-  const response = await worker.fetch(
-    new Request("http://localhost/api/forge", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: "horseshoe", detail: "detailed", scale: 1 }),
-    }),
-    {
-      AI: {
-        async run(model, input) {
-          calls.push({ model, input });
-          return { response: JSON.stringify(aiPlan()) };
+  try {
+    const response = await worker.fetch(
+      new Request("http://localhost/api/forge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "horseshoe", detail: "detailed", scale: 1 }),
+      }),
+      {
+        AI: {
+          async run(model, input) {
+            calls.push({ model, input });
+            return { response: JSON.stringify(aiPlan()) };
+          },
+        },
+        ASSETS: {
+          fetch: async () => new Response("Not found", { status: 404 }),
         },
       },
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
+      {
+        waitUntil() {},
+        passThroughOnException() {},
       },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
+    );
 
-  assert.equal(response.status, 200);
-  const body = await response.json();
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].model, "@cf/meta/llama-3.1-8b-instruct-fast");
-  assert.equal(body.project.source, "workers-ai");
-  assert.equal(body.project.planner.source, "workers-ai");
-  assert.ok(body.project.parts.some((part) => part.name === "Rounded Toe Bend"));
-  assert.ok(!body.project.parts.some((part) => /Main Frame|Drive Core|Output Module/.test(part.name)));
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].model, "@cf/meta/llama-3.1-8b-instruct-fast");
+    assert.equal(body.project.source, "workers-ai");
+    assert.equal(body.project.planner.source, "workers-ai");
+    assert.ok(body.project.parts.some((part) => part.name === "Rounded Toe Bend"));
+    assert.ok(!body.project.parts.some((part) => /Main Frame|Drive Core|Output Module/.test(part.name)));
+  } finally {
+    console.log = originalLog;
+  }
+
+  const eventNames = logs.map((entry) => entry.event);
+  assert.deepEqual(eventNames, [
+    "forge.request",
+    "planner.recipe",
+    "planner.ai.start",
+    "planner.ai.success",
+    "planner.validation.success",
+    "planner.conversion.success",
+    "forge.result",
+  ]);
+  const resultLog = logs.find((entry) => entry.event === "forge.result");
+  assert.equal(resultLog.projectSource, "workers-ai");
+  assert.equal(resultLog.plannerSource, "workers-ai");
+  assert.equal(resultLog.plannerModel, "@cf/meta/llama-3.1-8b-instruct-fast");
+  assert.deepEqual(resultLog.plannerWarnings, []);
+  assert.equal(resultLog.partCount, 4);
+  assert.equal(resultLog.genericMainFrameSignature, false);
 });
