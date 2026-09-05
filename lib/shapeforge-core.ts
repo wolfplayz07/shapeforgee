@@ -1,5 +1,5 @@
 export type Vec3 = [number, number, number];
-export type PrimitiveKind = "box" | "cylinder";
+export type PrimitiveKind = "box" | "cylinder" | "capsule" | "ellipsoid" | "frustum" | "cone" | "wedge";
 export type CylinderAxis = "x" | "y" | "z";
 export type DetailLevel = "basic" | "detailed";
 
@@ -604,7 +604,14 @@ export function importForgeProject(value: unknown): ForgeProject {
       rawParts.map((part, index) => ({
         key: String(part.id ?? `legacy-${index}`),
         name: String(part.name ?? `Component ${index + 1}`),
-        kind: part.kind === "cylinder" ? "cylinder" : "box",
+        kind: (
+          part.kind === "cylinder"
+          || part.kind === "capsule"
+          || part.kind === "ellipsoid"
+          || part.kind === "frustum"
+          || part.kind === "cone"
+          || part.kind === "wedge"
+        ) ? part.kind as PrimitiveKind : "box",
         axis: part.axis === "x" || part.axis === "y" || part.axis === "z" ? part.axis : undefined,
         parentKey: part.parent && keys.has(String(part.parent)) ? String(part.parent) : undefined,
         category: String(part.category ?? "component"),

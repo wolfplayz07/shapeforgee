@@ -1,4 +1,6 @@
 import {
+  ALLOWED_PLAN_PRIMITIVES,
+  GEOMETRY_PLAN_JSON_SCHEMA,
   GEOMETRY_PLAN_SCHEMA_VERSION,
   geometryPlanToProject,
   validateAndSanitizeGeometryPlan,
@@ -87,8 +89,8 @@ const geometryPlanContract = {
     id: "stable short id like mainBody",
     name: "human readable component name",
     role: "structure | housing | power | motion | control | input | output | thermal | fluid | electrical | support | fastener | surface | grip | optical | storage | other",
-    primitive: "box | cylinder",
-    axis: "x | y | z, required for cylinders",
+    primitive: "box | cylinder | capsule | ellipsoid | frustum | cone | wedge",
+    axis: "x | y | z, required for non-box primitives",
     purpose: "physical function",
     relativeSize: ["width fraction", "height fraction", "depth fraction"],
     relativePosition: ["x from center", "y from center", "z from center"],
@@ -115,7 +117,7 @@ function plannerSystemPrompt() {
     "Treat negative constraints such as not, no, without, excluding, and instead of as hard exclusions when practical.",
     "Avoid generic Main Frame / Drive Core / Output Module decompositions.",
     "Avoid a dominant rectangular outer shell unless the real object is box-shaped.",
-    "Use only box and cylinder primitives, with relative dimensions and positions normalized around the object center.",
+    "Use box, cylinder, capsule, ellipsoid, frustum, cone, and wedge primitives as needed, with relative dimensions and positions normalized around the object center.",
     "Keep 4 to 18 parts unless the object truly needs more.",
     "Do not emit code, markdown, prose, comments, or trailing commas.",
   ].join("\n");
@@ -158,6 +160,17 @@ function parsePlannerResult(result: unknown) {
   }
 }
 
+function isJsonModeFailure(error: unknown) {
+  const message = errorMessage(error).toLowerCase();
+  return (
+    message.includes("json mode")
+    || message.includes("json_schema")
+    || message.includes("couldn't be met")
+    || message.includes("could not be met")
+    || message.includes("response_format")
+  );
+}
+
 export class CloudflareWorkersAIProvider implements GeometryPlannerProvider {
   readonly source = "workers-ai" as const;
   readonly model: string;
@@ -172,22 +185,52 @@ export class CloudflareWorkersAIProvider implements GeometryPlannerProvider {
 
   async plan(prompt: string): Promise<GeometryPlan> {
     this.logger("planner.ai.start", { model: this.model, promptLength: prompt.length });
+    const messages = [
+      { role: "system", content: plannerSystemPrompt() },
+      { role: "user", content: plannerUserPrompt(prompt) },
+    ];
+    const baseInput = {
+      messages,
+      temperature: 0.2,
+      max_tokens: 2400,
+    };
     let result: unknown;
+    let responseFormat: "json_schema" | "json_object" = "json_schema";
     try {
-      result = await this.ai.run(this.model, {
-        messages: [
-          { role: "system", content: plannerSystemPrompt() },
-          { role: "user", content: plannerUserPrompt(prompt) },
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.2,
-        max_tokens: 2400,
-      });
+      try {
+        result = await this.ai.run(this.model, {
+          ...baseInput,
+          response_format: {
+            type: "json_schema",
+            json_schema: GEOMETRY_PLAN_JSON_SCHEMA,
+          },
+        });
+      } catch (schemaError) {
+        if (!isJsonModeFailure(schemaError)) {
+          throw schemaError;
+        }
+        responseFormat = "json_object";
+        this.logger("planner.ai.error", {
+          model: this.model,
+          error: errorMessage(schemaError),
+          fallback: "json_object",
+          reason: "json_schema_mode_failed",
+        });
+        result = await this.ai.run(this.model, {
+          ...baseInput,
+          response_format: { type: "json_object" },
+        });
+      }
     } catch (error) {
       this.logger("planner.ai.error", { model: this.model, error: errorMessage(error) });
       throw error;
     }
-    this.logger("planner.ai.success", { model: this.model, ...responseShape(result) });
+    this.logger("planner.ai.success", {
+      model: this.model,
+      responseFormat,
+      allowedPrimitives: [...ALLOWED_PLAN_PRIMITIVES],
+      ...responseShape(result),
+    });
 
     let parsed: unknown;
     try {

@@ -30,7 +30,7 @@ function part(id, name, role, primitive, relativeSize, relativePosition, extra =
     name,
     role,
     primitive,
-    axis: primitive === "cylinder" ? "x" : undefined,
+    axis: primitive !== "box" ? "x" : undefined,
     purpose: `${name} performs its physical role in the requested object.`,
     relativeSize,
     relativePosition,
@@ -296,6 +296,53 @@ test("fails closed when every part collapses to the origin with identical sizes"
   assert.ok(result.warnings.some((warning) => /collapsed/i.test(warning)));
 });
 
+test("fails closed when part centers only have tiny jitter (weak AABB span)", () => {
+  const raw = basePlan("Office Chair", {
+    parts: [
+      part("seat", "Seat Pan", "surface", "box", [0.55, 0.08, 0.5], [0, 0, 0]),
+      part("back", "Backrest", "support", "box", [0.5, 0.55, 0.08], [0.01, 0.02, 0]),
+      part("base", "Star Base", "support", "cylinder", [0.45, 0.06, 0.45], [0.02, -0.01, 0.01], { axis: "y" }),
+      part("column", "Gas Column", "motion", "cylinder", [0.08, 0.35, 0.08], [-0.01, 0.015, 0.02], { axis: "y" }),
+    ],
+  });
+  const result = validateAndSanitizeGeometryPlan(raw, "office chair");
+  assert.equal(result.ok, false);
+  assert.ok(result.warnings.some((warning) => /collapsed/i.test(warning) && /span/i.test(warning)));
+});
+
+test("accepts high-fidelity primitives and wires them into project parts", () => {
+  const raw = basePlan("Desk Lamp", {
+    parts: [
+      part("shade", "Lamp Shade", "housing", "frustum", [0.45, 0.35, 0.45], [0, 0.55, 0], { axis: "y" }),
+      part("bulb", "Bulb", "optical", "ellipsoid", [0.18, 0.22, 0.18], [0, 0.35, 0], { axis: "y" }),
+      part("stem", "Stem", "support", "capsule", [0.08, 0.7, 0.08], [0, -0.05, 0], { axis: "y" }),
+      part("base", "Weighted Base", "support", "cylinder", [0.42, 0.1, 0.42], [0, -0.55, 0], { axis: "y" }),
+      part("tip", "Shade Tip", "surface", "cone", [0.12, 0.16, 0.12], [0, 0.72, 0], { axis: "y" }),
+      part("brace", "Support Brace", "support", "wedge", [0.2, 0.08, 0.12], [0.18, -0.35, 0], { axis: "x" }),
+    ],
+  });
+  const result = validateAndSanitizeGeometryPlan(raw, "desk lamp");
+  assert.equal(result.ok, true, result.warnings.join("; "));
+  const kinds = Object.fromEntries(result.plan.parts.map((item) => [item.id, item.primitive]));
+  assert.equal(kinds.shade, "frustum");
+  assert.equal(kinds.bulb, "ellipsoid");
+  assert.equal(kinds.stem, "capsule");
+  assert.equal(kinds.tip, "cone");
+  assert.equal(kinds.brace, "wedge");
+
+  const project = geometryPlanToProject(result.plan, "desk lamp", {
+    plannerSource: { source: "workers-ai", model: "mock" },
+  });
+  const projectKinds = Object.fromEntries(project.parts.map((item) => [item.name, item.kind]));
+  assert.equal(projectKinds["Lamp Shade"], "frustum");
+  assert.equal(projectKinds.Bulb, "ellipsoid");
+  assert.equal(projectKinds.Stem, "capsule");
+  assert.equal(projectKinds["Shade Tip"], "cone");
+  assert.equal(projectKinds["Support Brace"], "wedge");
+  assert.ok(project.parts.every((item) => item.kind === "box" || item.axis));
+  assertValid(project);
+});
+
 test("fails closed when Workers AI Vec3 fields are unusable and defaults stack at the origin", () => {
   const raw = basePlan("Washing Machine", {
     parts: [
@@ -448,3 +495,35 @@ test("high-confidence recovered recipes run before Workers AI", async () => {
   assert.ok(names(project).includes("Pin Table"));
   assertValid(project);
 });
+
+test("Workers AI planner requests json_schema GeometryPlan response_format", async () => {
+  const ai = mockAI();
+  await createForgeProjectWithPlanner("wrench", { AI: ai }, { detail: "detailed" });
+  assert.equal(ai.calls.length, 1);
+  const format = ai.calls[0].input.response_format;
+  assert.equal(format.type, "json_schema");
+  assert.equal(format.json_schema?.properties?.parts?.items?.properties?.primitive?.enum?.includes("capsule"), true);
+  assert.equal(format.json_schema?.properties?.parts?.items?.properties?.primitive?.enum?.includes("wedge"), true);
+  assert.match(ai.calls[0].input.messages[0].content, /capsule|ellipsoid|frustum|cone|wedge/i);
+});
+
+test("Workers AI planner falls back to json_object when json_schema mode fails", async () => {
+  const ai = {
+    calls: [],
+    async run(model, input) {
+      this.calls.push({ model, input });
+      if (input.response_format?.type === "json_schema") {
+        throw new Error("JSON Mode couldn't be met");
+      }
+      return { response: JSON.stringify(planFor("telescope")) };
+    },
+  };
+  const project = await createForgeProjectWithPlanner("telescope", { AI: ai }, { detail: "detailed" });
+  assert.equal(ai.calls.length, 2);
+  assert.equal(ai.calls[0].input.response_format.type, "json_schema");
+  assert.equal(ai.calls[1].input.response_format.type, "json_object");
+  assert.equal(project.source, "workers-ai");
+  assert.equal(project.planner.source, "workers-ai");
+  assertValid(project);
+});
+
