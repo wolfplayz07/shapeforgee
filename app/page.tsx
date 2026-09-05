@@ -457,13 +457,19 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: value, scale: requestedScale / 100, detail }),
       });
-      if (!response.ok) throw new Error(`Generation failed: ${response.status}`);
-      const body = await response.json() as { project?: ForgeProject };
+      const body = await response.json() as { project?: ForgeProject; error?: string };
+      if (!response.ok) {
+        throw new Error(body.error || `Generation failed: ${response.status}`);
+      }
       if (!body.project) throw new Error("Generation response did not include a project.");
       next = body.project;
-    } catch {
+    } catch (error) {
       next = createForgeProject(value, { scale: requestedScale / 100, detail });
-      next.planner = { source: "semantic-fallback", warnings: ["Browser fell back to local planner after the server planner was unavailable."] };
+      const detailMessage = error instanceof Error && error.message ? error.message : "server planner unavailable";
+      next.planner = {
+        source: "semantic-fallback",
+        warnings: [`Workers AI failed — semantic fallback used (${detailMessage})`],
+      };
     } finally {
       setGenerating(false);
     }
