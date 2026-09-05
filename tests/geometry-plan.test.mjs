@@ -200,6 +200,143 @@ test("validates, repairs, and converts structured GeometryPlan data", () => {
   assertValid(project);
 });
 
+
+test("accepts Workers AI object/string Vec3 layouts and maps them to distinct project positions", () => {
+  const raw = {
+    schemaVersion: 1,
+    requestedObject: { identity: "Washing Machine", scope: "appliance" },
+    silhouette: {
+      form: "upright boxy appliance",
+      proportions: { width: "1.1", height: "1.4", depth: "1.0" },
+      orientation: "upright",
+      dominantAxis: "y",
+      symmetry: "bilateral",
+    },
+    exclusions: [],
+    recognitionCriticalParts: ["drum", "door"],
+    parts: [
+      {
+        id: "cabinet",
+        name: "Cabinet",
+        role: "housing",
+        primitive: "box",
+        purpose: "Outer cabinet",
+        relativeSize: { width: "0.9", height: "0.95", depth: "0.85" },
+        relativePosition: { x: 0, y: 0, z: 0 },
+        rotation: [0, 0, 0],
+      },
+      {
+        id: "drum",
+        name: "Rotating Drum",
+        role: "motion",
+        primitive: "cylinder",
+        axis: "z",
+        purpose: "Holds laundry",
+        relative_size: ["0.55", "0.55", "0.5"],
+        relative_position: { x: "0", y: "-0.05", z: "0.05" },
+        rotation: { x: 0, y: 0, z: 0 },
+        parentId: "cabinet",
+      },
+      {
+        id: "door",
+        name: "Door",
+        role: "surface",
+        primitive: "cylinder",
+        axis: "z",
+        purpose: "Front loading door",
+        size: { x: 0.5, y: 0.5, z: 0.08 },
+        position: { x: 0, y: 0, z: 0.55 },
+        rotation: [0, 0, 0],
+        parentId: "cabinet",
+      },
+      {
+        id: "panel",
+        name: "Control Panel",
+        role: "control",
+        primitive: "box",
+        purpose: "Top controls",
+        relativeSize: [0.7, 0.12, 0.2],
+        relativePosition: [0, 0.55, 0.2],
+        rotation: [0, 0, 0],
+        parentId: "cabinet",
+      },
+    ],
+    relationships: [],
+  };
+
+  const result = validateAndSanitizeGeometryPlan(raw, "washing machine");
+  assert.equal(result.ok, true, result.warnings.join("; "));
+  const byId = Object.fromEntries(result.plan.parts.map((item) => [item.id, item]));
+  assert.deepEqual(byId.cabinet.relativeSize, [0.9, 0.95, 0.85]);
+  assert.deepEqual(byId.drum.relativeSize, [0.55, 0.55, 0.5]);
+  assert.deepEqual(byId.door.relativePosition, [0, 0, 0.55]);
+  assert.deepEqual(byId.panel.relativePosition, [0, 0.55, 0.2]);
+
+  const project = geometryPlanToProject(result.plan, "washing machine", {
+    plannerSource: { source: "workers-ai", model: "mock" },
+  });
+  const positions = new Set(project.parts.map((item) => item.position.map((value) => value.toFixed(2)).join(",")));
+  const sizes = new Set(project.parts.map((item) => item.size.map((value) => value.toFixed(2)).join(",")));
+  assert.ok(positions.size >= 3, `expected spread positions, got ${[...positions]}`);
+  assert.ok(sizes.size >= 3, `expected varied sizes, got ${[...sizes]}`);
+  assert.ok(!project.parts.every((item) => item.position.every((value) => value === 0)));
+  assertValid(project);
+});
+
+test("fails closed when every part collapses to the origin with identical sizes", () => {
+  const raw = basePlan("Horseshoe", {
+    parts: [
+      part("main", "Main Body", "structure", "cylinder", [0.35, 0.2, 0.2], [0, 0, 0]),
+      part("rim", "Rim", "surface", "cylinder", [0.35, 0.2, 0.2], [0, 0, 0]),
+      part("nails", "Nails", "fastener", "box", [0.35, 0.2, 0.2], [0, 0, 0]),
+    ],
+  });
+  const result = validateAndSanitizeGeometryPlan(raw, "horseshoe");
+  assert.equal(result.ok, false);
+  assert.ok(result.warnings.some((warning) => /collapsed/i.test(warning)));
+});
+
+test("fails closed when Workers AI Vec3 fields are unusable and defaults stack at the origin", () => {
+  const raw = basePlan("Washing Machine", {
+    parts: [
+      {
+        id: "cabinet",
+        name: "Cabinet",
+        role: "housing",
+        primitive: "box",
+        purpose: "Outer cabinet",
+        relativeSize: { bogus: true },
+        relativePosition: "center",
+        rotation: [0, 0, 0],
+      },
+      {
+        id: "drum",
+        name: "Drum",
+        role: "motion",
+        primitive: "cylinder",
+        axis: "z",
+        purpose: "Drum",
+        relativeSize: 0.5,
+        relativePosition: null,
+        rotation: [0, 0, 0],
+      },
+      {
+        id: "door",
+        name: "Door",
+        role: "surface",
+        primitive: "box",
+        purpose: "Door",
+        relativeSize: { onlyX: 1 },
+        relativePosition: {},
+        rotation: [0, 0, 0],
+      },
+    ],
+  });
+  const result = validateAndSanitizeGeometryPlan(raw, "washing machine");
+  assert.equal(result.ok, false);
+  assert.ok(result.warnings.some((warning) => /collapsed/i.test(warning)));
+});
+
 test("rejects unsafe GeometryPlan references instead of corrupting projects", () => {
   const raw = basePlan("bad", {
     parts: [
