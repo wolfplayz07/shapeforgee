@@ -144,12 +144,60 @@ const asStringArray = (value: unknown) =>
     : [];
 
 function asFiniteNumber(value: unknown, fallback: number) {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+/** Normalize Workers AI Vec3 shapes: number[] | string[] | {x,y,z} | {width,height,depth}. */
+function extractVec3Entries(value: unknown): unknown[] | null {
+  if (Array.isArray(value) && value.length >= 3) return value.slice(0, 3);
+  if (!isObject(value)) return null;
+  const x = value.x ?? value.width ?? value["0"];
+  const y = value.y ?? value.height ?? value["1"];
+  const z = value.z ?? value.depth ?? value["2"];
+  if (x === undefined || y === undefined || z === undefined) return null;
+  return [x, y, z];
 }
 
 function asVec3(value: unknown, fallback: Vec3, min: number, max: number): Vec3 {
-  if (!Array.isArray(value) || value.length !== 3) return fallback;
-  return value.map((entry, index) => clamp(asFiniteNumber(entry, fallback[index]), min, max)) as Vec3;
+  const entries = extractVec3Entries(value);
+  if (!entries) return fallback;
+  return entries.map((entry, index) => clamp(asFiniteNumber(entry, fallback[index]), min, max)) as Vec3;
+}
+
+function pickVec3Field(
+  entry: Record<string, unknown>,
+  keys: string[],
+  fallback: Vec3,
+  min: number,
+  max: number,
+): { value: Vec3; usedFallback: boolean } {
+  for (const key of keys) {
+    if (entry[key] === undefined || entry[key] === null) continue;
+    const entries = extractVec3Entries(entry[key]);
+    if (!entries) continue;
+    return {
+      value: entries.map((component, index) => clamp(asFiniteNumber(component, fallback[index]), min, max)) as Vec3,
+      usedFallback: false,
+    };
+  }
+  return { value: fallback, usedFallback: true };
+}
+
+function hasCollapsedSpatialLayout(parts: GeometryPlanPart[]) {
+  if (parts.length < 2) return false;
+  const allAtOrigin = parts.every((part) =>
+    part.relativePosition.every((value) => Math.abs(value) < 1e-6),
+  );
+  if (allAtOrigin) return true;
+  const signature = (part: GeometryPlanPart) =>
+    `${part.relativePosition.map((value) => value.toFixed(4)).join(",")}|${part.relativeSize.map((value) => value.toFixed(4)).join(",")}`;
+  const first = signature(parts[0]);
+  return parts.every((part) => signature(part) === first);
 }
 
 function normalizeToken(value: string) {
@@ -221,6 +269,11 @@ export function validateAndSanitizeGeometryPlan(raw: unknown, prompt: string): P
     }
     const primitive = allowedPrimitives.has(entry.primitive as PrimitiveKind) ? entry.primitive as PrimitiveKind : "box";
     const role = allowedRoles.has(entry.role as PartRole) ? entry.role as PartRole : "other";
+    const sizeField = pickVec3Field(entry, ["relativeSize", "relative_size", "size", "dimensions"], [0.35, 0.2, 0.2], 0.03, 1.8);
+    const positionField = pickVec3Field(entry, ["relativePosition", "relative_position", "position", "offset"], [0, 0, 0], -1.5, 1.5);
+    const rotationField = pickVec3Field(entry, ["rotation", "rotate"], [0, 0, 0], -180, 180);
+    if (sizeField.usedFallback) warnings.push(`Repaired missing/unusable relativeSize for ${id}.`);
+    if (positionField.usedFallback) warnings.push(`Repaired missing/unusable relativePosition for ${id}.`);
     const part: GeometryPlanPart = {
       id,
       name,
@@ -228,9 +281,9 @@ export function validateAndSanitizeGeometryPlan(raw: unknown, prompt: string): P
       primitive,
       axis: primitive === "cylinder" && allowedAxes.has(entry.axis as CylinderAxis) ? entry.axis as CylinderAxis : undefined,
       purpose: asString(entry.purpose, `Represents the ${name.toLowerCase()} in the requested object.`),
-      relativeSize: asVec3(entry.relativeSize, [0.35, 0.2, 0.2], 0.03, 1.8),
-      relativePosition: asVec3(entry.relativePosition, [0, 0, 0], -1.5, 1.5),
-      rotation: asVec3(entry.rotation, [0, 0, 0], -180, 180),
+      relativeSize: sizeField.value,
+      relativePosition: positionField.value,
+      rotation: rotationField.value,
       parentId: typeof entry.parentId === "string" ? entry.parentId : null,
       relatedIds: asStringArray(entry.relatedIds),
       spatialRelationships: asStringArray(entry.spatialRelationships),
@@ -259,6 +312,12 @@ export function validateAndSanitizeGeometryPlan(raw: unknown, prompt: string): P
   }
 
   if (hasHierarchyCycle(parts)) return { ok: false, warnings: [...warnings, "Planner hierarchy contains a cycle."] };
+  if (hasCollapsedSpatialLayout(parts)) {
+    return {
+      ok: false,
+      warnings: [...warnings, "Planner layout is collapsed: all parts share identical origin/size (invalid spatial assembly)."],
+    };
+  }
 
   const relationships = Array.isArray(raw.relationships)
     ? raw.relationships.filter(isObject).map((item) => ({
