@@ -27,6 +27,22 @@ function apiJson(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: apiHeaders });
 }
 
+function logForge(event: "forge.request" | "forge.result", details: Record<string, unknown>) {
+  console.log(JSON.stringify({
+    event,
+    ...details,
+  }));
+}
+
+function hasGenericMainFrameSignature(project: { parts: Array<{ name: string }> }) {
+  const names = new Set(project.parts.map((part) => part.name));
+  return names.has("Main Frame") &&
+    names.has("Outer Body") &&
+    names.has("Drive Core") &&
+    names.has("Control Module") &&
+    names.has("Output Module");
+}
+
 async function handleForgeGenerate(request: Request, env: Env) {
   if (request.method !== "POST") return apiJson({ error: "Method not allowed" }, 405);
   let body: Record<string, unknown>;
@@ -39,7 +55,24 @@ async function handleForgeGenerate(request: Request, env: Env) {
   if (!prompt) return apiJson({ error: "Provide a prompt." }, 400);
   const detail = body.detail === "basic" ? "basic" : "detailed";
   const scale = typeof body.scale === "number" ? body.scale : undefined;
+  logForge("forge.request", {
+    method: request.method,
+    path: new URL(request.url).pathname,
+    promptLength: prompt.length,
+    detail,
+    scale,
+    hasAIBinding: Boolean(env.AI),
+    configuredModel: env.SHAPEFORGE_AI_MODEL || null,
+  });
   const project = await createForgeProjectWithPlanner(prompt, env, { detail, scale });
+  logForge("forge.result", {
+    projectSource: project.source,
+    plannerSource: project.planner?.source ?? null,
+    plannerModel: project.planner?.model ?? null,
+    plannerWarnings: project.planner?.warnings ?? [],
+    partCount: project.parts.length,
+    genericMainFrameSignature: hasGenericMainFrameSignature(project),
+  });
   return apiJson({ project });
 }
 

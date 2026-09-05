@@ -251,6 +251,46 @@ test("Workers AI planner creates distinct physical projects and preserves constr
   assert.ok(!names(lamp).some((name) => /tabletop|leg|center brace/i.test(name)));
 });
 
+test("Workers AI object response is parsed as a successful structured plan", async () => {
+  const ai = {
+    calls: [],
+    async run(model, input) {
+      this.calls.push({ model, input });
+      return { response: planFor("telescope") };
+    },
+  };
+
+  const project = await createForgeProjectWithPlanner("telescope", { AI: ai }, { detail: "detailed" });
+  assert.equal(ai.calls.length, 1);
+  assert.equal(project.source, "workers-ai");
+  assert.equal(project.planner.source, "workers-ai");
+  assert.ok(!names(project).some((name) => /Main Frame|Drive Core|Output Module/.test(name)));
+  assertValid(project);
+});
+
+test("successful AI planning for unknown prompts cannot silently become genericRecipe output", async () => {
+  const ai = {
+    calls: [],
+    async run(model, input) {
+      this.calls.push({ model, input });
+      return { response: JSON.stringify(planFor("motorcycle frame subassembly")) };
+    },
+  };
+
+  const project = await createForgeProjectWithPlanner("motorcycle frame subassembly", { AI: ai }, { detail: "detailed" });
+  const projectNames = names(project);
+  assert.equal(ai.calls.length, 1);
+  assert.equal(project.source, "workers-ai");
+  assert.equal(project.planner.source, "workers-ai");
+  assert.equal(project.planner.model, "@cf/meta/llama-3.1-8b-instruct-fast");
+  assert.ok(!projectNames.includes("Main Frame"));
+  assert.ok(!projectNames.includes("Outer Body"));
+  assert.ok(!projectNames.includes("Drive Core"));
+  assert.ok(!projectNames.includes("Control Module"));
+  assert.ok(!projectNames.includes("Output Module"));
+  assertValid(project);
+});
+
 test("Workers AI planner falls back to existing semantic planner when model output is invalid", async () => {
   const project = await createForgeProjectWithPlanner("eyeglasses", {
     AI: { async run() { return { response: "{\"parts\": []}" }; } },

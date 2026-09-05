@@ -29,6 +29,44 @@ export interface PlannerEnv {
   SHAPEFORGE_AI_MODEL?: string;
 }
 
+type PlannerLogEvent =
+  | "planner.recipe"
+  | "planner.ai.start"
+  | "planner.ai.success"
+  | "planner.ai.error"
+  | "planner.ai.parse_error"
+  | "planner.validation.success"
+  | "planner.validation.error"
+  | "planner.conversion.success"
+  | "planner.conversion.error"
+  | "planner.fallback";
+
+type PlannerLogger = (event: PlannerLogEvent, details?: Record<string, unknown>) => void;
+
+function logPlanner(event: PlannerLogEvent, details: Record<string, unknown> = {}) {
+  console.log(JSON.stringify({
+    event,
+    ...details,
+  }));
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function responseShape(result: unknown) {
+  if (typeof result === "string") return { resultType: "string", resultLength: result.length };
+  if (!result || typeof result !== "object") return { resultType: typeof result };
+  const value = result as Record<string, unknown>;
+  return {
+    resultType: "object",
+    keys: Object.keys(value).slice(0, 8),
+    responseType: typeof value.response,
+    resultFieldType: typeof value.result,
+    choices: Array.isArray(value.choices) ? value.choices.length : undefined,
+  };
+}
+
 const geometryPlanContract = {
   schemaVersion: GEOMETRY_PLAN_SCHEMA_VERSION,
   requestedObject: {
@@ -96,7 +134,9 @@ function extractJsonText(result: unknown): string {
   if (!result || typeof result !== "object") return "";
   const value = result as Record<string, unknown>;
   if (typeof value.response === "string") return value.response;
+  if (value.response && typeof value.response === "object") return JSON.stringify(value.response);
   if (typeof value.result === "string") return value.result;
+  if (value.result && typeof value.result === "object") return JSON.stringify(value.result);
   if (Array.isArray(value.choices)) {
     const first = value.choices[0] as Record<string, unknown> | undefined;
     const message = first?.message as Record<string, unknown> | undefined;
@@ -122,26 +162,53 @@ export class CloudflareWorkersAIProvider implements GeometryPlannerProvider {
   readonly source = "workers-ai" as const;
   readonly model: string;
   readonly ai: WorkersAIBinding;
+  readonly logger: PlannerLogger;
 
-  constructor(ai: WorkersAIBinding, model = DEFAULT_WORKERS_AI_MODEL) {
+  constructor(ai: WorkersAIBinding, model = DEFAULT_WORKERS_AI_MODEL, logger: PlannerLogger = logPlanner) {
     this.ai = ai;
     this.model = model;
+    this.logger = logger;
   }
 
   async plan(prompt: string): Promise<GeometryPlan> {
-    const result = await this.ai.run(this.model, {
-      messages: [
-        { role: "system", content: plannerSystemPrompt() },
-        { role: "user", content: plannerUserPrompt(prompt) },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-      max_tokens: 2400,
-    });
-    const validation = validateAndSanitizeGeometryPlan(parsePlannerResult(result), prompt);
+    this.logger("planner.ai.start", { model: this.model, promptLength: prompt.length });
+    let result: unknown;
+    try {
+      result = await this.ai.run(this.model, {
+        messages: [
+          { role: "system", content: plannerSystemPrompt() },
+          { role: "user", content: plannerUserPrompt(prompt) },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.2,
+        max_tokens: 2400,
+      });
+    } catch (error) {
+      this.logger("planner.ai.error", { model: this.model, error: errorMessage(error) });
+      throw error;
+    }
+    this.logger("planner.ai.success", { model: this.model, ...responseShape(result) });
+
+    let parsed: unknown;
+    try {
+      parsed = parsePlannerResult(result);
+    } catch (error) {
+      this.logger("planner.ai.parse_error", { model: this.model, error: errorMessage(error), ...responseShape(result) });
+      throw error;
+    }
+
+    const validation = validateAndSanitizeGeometryPlan(parsed, prompt);
     if (!validation.ok || !validation.plan) {
+      this.logger("planner.validation.error", { model: this.model, warnings: validation.warnings });
       throw new Error(`INVALID_GEOMETRY_PLAN: ${validation.warnings.join("; ")}`);
     }
+    this.logger("planner.validation.success", {
+      model: this.model,
+      identity: validation.plan.requestedObject.identity,
+      scope: validation.plan.requestedObject.scope,
+      partCount: validation.plan.parts.length,
+      warnings: validation.warnings,
+    });
     return validation.plan;
   }
 }
@@ -158,32 +225,52 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 export async function createForgeProjectWithPlanner(
   prompt: string,
   env: PlannerEnv,
-  options: { scale?: number; detail?: DetailLevel; timeoutMs?: number } = {},
+  options: { scale?: number; detail?: DetailLevel; timeoutMs?: number; logger?: PlannerLogger } = {},
 ): Promise<ForgeProject> {
+  const logger = options.logger ?? logPlanner;
   const recovered = tryRecoveredRecipeProject(prompt, options);
-  if (recovered) return recovered;
+  if (recovered) {
+    logger("planner.recipe", { matched: true, source: recovered.source, plannerSource: recovered.planner?.source, partCount: recovered.parts.length });
+    return recovered;
+  }
+  logger("planner.recipe", { matched: false });
 
   const warnings: string[] = [];
+  const model = env.SHAPEFORGE_AI_MODEL || DEFAULT_WORKERS_AI_MODEL;
   if (env.AI) {
-    const model = env.SHAPEFORGE_AI_MODEL || DEFAULT_WORKERS_AI_MODEL;
     try {
-      const provider = new CloudflareWorkersAIProvider(env.AI, model);
+      const provider = new CloudflareWorkersAIProvider(env.AI, model, logger);
       const plan = await withTimeout(provider.plan(prompt), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-      const project = geometryPlanToProject(plan, prompt, {
-        scale: options.scale,
-        detail: options.detail,
-        plannerSource: { source: "workers-ai", model },
-      });
+      let project: ForgeProject;
+      try {
+        project = geometryPlanToProject(plan, prompt, {
+          scale: options.scale,
+          detail: options.detail,
+          plannerSource: { source: "workers-ai", model },
+        });
+      } catch (error) {
+        logger("planner.conversion.error", { model, error: errorMessage(error) });
+        throw error;
+      }
+      logger("planner.conversion.success", { model, projectSource: project.source, partCount: project.parts.length });
       project.history = [...project.history, `Planner source: Workers AI (${model})`];
       return project;
     } catch (error) {
-      warnings.push(error instanceof Error ? error.message : "Workers AI planning failed.");
+      warnings.push(errorMessage(error));
     }
   } else {
     warnings.push("Workers AI binding is unavailable.");
   }
 
   const fallback = createSemanticFallbackProject(prompt, options, warnings);
+  fallback.planner = { source: "semantic-fallback", model: env.AI ? model : undefined, warnings };
   fallback.history = [...fallback.history, "Planner source: semantic fallback"];
+  logger("planner.fallback", {
+    source: fallback.source,
+    plannerSource: fallback.planner?.source,
+    model: fallback.planner?.model,
+    warnings,
+    partCount: fallback.parts.length,
+  });
   return fallback;
 }
