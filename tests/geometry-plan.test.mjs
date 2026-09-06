@@ -16,7 +16,7 @@ const vite = await createServer({
 const geometry = await vite.ssrLoadModule("/lib/geometry-plan.ts");
 const planner = await vite.ssrLoadModule("/worker/geometry-planner.ts");
 const shapeforge = await vite.ssrLoadModule("/lib/shapeforge.ts");
-const { geometryPlanToProject, validateAndSanitizeGeometryPlan, sanitizeBilateralMirrors } = geometry;
+const { geometryPlanToProject, validateAndSanitizeGeometryPlan, sanitizeBilateralMirrors, normalizeSilhouetteProportions } = geometry;
 const { createForgeProjectWithPlanner } = planner;
 const { validateForgeProject } = shapeforge;
 
@@ -625,3 +625,17 @@ test("downgrades bilateral symmetry when no left/right span or mirror pairs exis
   assert.ok(result.warnings.some((warning) => /downgraded symmetry/i.test(warning)));
 });
 
+
+test("normalizes silhouette proportions toward the dominant axis", () => {
+  const boosted = normalizeSilhouetteProportions({ width: 1, height: 1, depth: 1 }, "y");
+  assert.ok(boosted.height > boosted.width);
+  assert.ok(boosted.height > boosted.depth);
+  const raw = basePlan("Tall Tower", {
+    silhouette: { form: "tower", proportions: { width: 1, height: 1, depth: 1 }, orientation: "upright", dominantAxis: "y", symmetry: "none" },
+    recognitionCriticalParts: ["Primary Body", "Working Interface", "Support Feature"],
+  });
+  const result = validateAndSanitizeGeometryPlan(raw, "tall tower");
+  assert.equal(result.ok, true, result.warnings.join("; "));
+  assert.ok(result.plan.silhouette.proportions.height >= result.plan.silhouette.proportions.width);
+  assert.ok(result.warnings.some((warning) => /Normalized silhouette proportions/i.test(warning)));
+});
