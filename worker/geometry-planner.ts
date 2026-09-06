@@ -69,6 +69,200 @@ function responseShape(result: unknown) {
   };
 }
 
+
+/** LayoutGPT-inspired few-shot GeometryPlans (UCSB-AI/LayoutGPT style: concrete numeric layout + recognition-critical parts). */
+const LAYOUTGPT_FEW_SHOTS: Array<{ prompt: string; plan: Record<string, unknown> }> = [
+  {
+    prompt: "desk lamp",
+    plan: {
+      schemaVersion: GEOMETRY_PLAN_SCHEMA_VERSION,
+      requestedObject: { identity: "Desk Lamp", scope: "complete_object", subtype: "adjustable" },
+      silhouette: {
+        form: "weighted base with slender stem and flared shade",
+        proportions: { width: 0.7, height: 1.4, depth: 0.7 },
+        orientation: "upright",
+        dominantAxis: "y",
+        symmetry: "radial",
+      },
+      exclusions: [],
+      recognitionCriticalParts: ["shade", "stem", "base"],
+      parts: [
+        {
+          id: "base",
+          name: "Weighted Base",
+          role: "support",
+          primitive: "cylinder",
+          axis: "y",
+          purpose: "Anchors the lamp on the desk",
+          relativeSize: [0.42, 0.1, 0.42],
+          relativePosition: [0, -0.55, 0],
+          rotation: [0, 0, 0],
+          parentId: null,
+          relatedIds: ["stem"],
+          spatialRelationships: ["below stem"],
+        },
+        {
+          id: "stem",
+          name: "Stem",
+          role: "support",
+          primitive: "capsule",
+          axis: "y",
+          purpose: "Raises the shade above the base",
+          relativeSize: [0.08, 0.7, 0.08],
+          relativePosition: [0, -0.05, 0],
+          rotation: [0, 0, 0],
+          parentId: "base",
+          relatedIds: ["shade", "base"],
+          spatialRelationships: ["above base", "below shade"],
+        },
+        {
+          id: "shade",
+          name: "Lamp Shade",
+          role: "housing",
+          primitive: "frustum",
+          axis: "y",
+          purpose: "Diffuses light downward",
+          relativeSize: [0.45, 0.35, 0.45],
+          relativePosition: [0, 0.55, 0],
+          rotation: [0, 0, 0],
+          parentId: "stem",
+          relatedIds: ["bulb"],
+          spatialRelationships: ["above stem"],
+        },
+        {
+          id: "bulb",
+          name: "Bulb",
+          role: "optical",
+          primitive: "ellipsoid",
+          axis: "y",
+          purpose: "Emits light inside the shade",
+          relativeSize: [0.16, 0.2, 0.16],
+          relativePosition: [0, 0.38, 0],
+          rotation: [0, 0, 0],
+          parentId: "shade",
+          relatedIds: ["shade"],
+          spatialRelationships: ["inside shade"],
+          detail: true,
+        },
+      ],
+      relationships: [
+        { from: "stem", to: "base", type: "attached", description: "stem mounts on base" },
+        { from: "shade", to: "stem", type: "attached", description: "shade sits on stem" },
+      ],
+      plannerNotes: "LayoutGPT-style numeric stack: base below, stem mid, shade above.",
+    },
+  },
+  {
+    prompt: "stapler",
+    plan: {
+      schemaVersion: GEOMETRY_PLAN_SCHEMA_VERSION,
+      requestedObject: { identity: "Stapler", scope: "tool", subtype: "desktop" },
+      silhouette: {
+        form: "elongated hinged stapler with magazine and base anvil",
+        proportions: { width: 0.35, height: 0.45, depth: 1.2 },
+        orientation: "lying along depth",
+        dominantAxis: "z",
+        symmetry: "bilateral",
+      },
+      exclusions: [],
+      recognitionCriticalParts: ["magazine", "anvil", "hinge"],
+      parts: [
+        {
+          id: "base",
+          name: "Base Anvil",
+          role: "structure",
+          primitive: "box",
+          purpose: "Supports the stapler and clinches staples",
+          relativeSize: [0.32, 0.08, 0.95],
+          relativePosition: [0, -0.2, 0],
+          rotation: [0, 0, 0],
+          parentId: null,
+          relatedIds: ["magazine", "hinge"],
+          spatialRelationships: ["below magazine"],
+        },
+        {
+          id: "magazine",
+          name: "Staple Magazine",
+          role: "housing",
+          primitive: "box",
+          purpose: "Holds the staple strip above the anvil",
+          relativeSize: [0.28, 0.14, 0.85],
+          relativePosition: [0, 0.08, -0.05],
+          rotation: [0, 0, 0],
+          parentId: "hinge",
+          relatedIds: ["base", "cap"],
+          spatialRelationships: ["above base", "hinged at rear"],
+        },
+        {
+          id: "hinge",
+          name: "Rear Hinge",
+          role: "motion",
+          primitive: "cylinder",
+          axis: "x",
+          purpose: "Pivots the magazine onto the anvil",
+          relativeSize: [0.3, 0.1, 0.1],
+          relativePosition: [0, 0, -0.42],
+          rotation: [0, 0, 0],
+          parentId: "base",
+          relatedIds: ["magazine", "base"],
+          spatialRelationships: ["at rear of base"],
+        },
+        {
+          id: "cap",
+          name: "Top Cap",
+          role: "surface",
+          primitive: "box",
+          purpose: "Press surface on top of the magazine",
+          relativeSize: [0.26, 0.06, 0.55],
+          relativePosition: [0, 0.2, 0.05],
+          rotation: [0, 0, 0],
+          parentId: "magazine",
+          relatedIds: ["magazine"],
+          spatialRelationships: ["above magazine"],
+          detail: true,
+        },
+        {
+          id: "noseL",
+          name: "Left Nose Guide",
+          role: "output",
+          primitive: "wedge",
+          axis: "z",
+          purpose: "Guides staples on the left of the nose",
+          relativeSize: [0.06, 0.08, 0.16],
+          relativePosition: [-0.08, 0.05, 0.48],
+          rotation: [0, 0, 0],
+          parentId: "magazine",
+          relatedIds: ["noseR", "magazine"],
+          spatialRelationships: ["front left of magazine"],
+          mirroredFrom: "noseR",
+          detail: true,
+        },
+        {
+          id: "noseR",
+          name: "Right Nose Guide",
+          role: "output",
+          primitive: "wedge",
+          axis: "z",
+          purpose: "Guides staples on the right of the nose",
+          relativeSize: [0.06, 0.08, 0.16],
+          relativePosition: [0.08, 0.05, 0.48],
+          rotation: [0, 0, 0],
+          parentId: "magazine",
+          relatedIds: ["noseL", "magazine"],
+          spatialRelationships: ["front right of magazine"],
+          mirroredFrom: "noseL",
+          detail: true,
+        },
+      ],
+      relationships: [
+        { from: "magazine", to: "hinge", type: "hinged", description: "magazine pivots on hinge" },
+        { from: "noseL", to: "noseR", type: "mirrored", description: "bilateral nose guides" },
+      ],
+      plannerNotes: "LayoutGPT-style bilateral stapler: base/anvil, hinged magazine, mirrored nose guides.",
+    },
+  },
+];
+
 const geometryPlanContract = {
   schemaVersion: GEOMETRY_PLAN_SCHEMA_VERSION,
   requestedObject: {
@@ -118,6 +312,9 @@ function plannerSystemPrompt() {
     "Avoid generic Main Frame / Drive Core / Output Module decompositions.",
     "Avoid a dominant rectangular outer shell unless the real object is box-shaped.",
     "Use box, cylinder, capsule, ellipsoid, frustum, cone, and wedge primitives as needed, with relative dimensions and positions normalized around the object center.",
+    "Apply LayoutGPT-style compositional layout: every part needs concrete relativeSize and relativePosition (CSS-like numeric placement), never identical defaults at the origin.",
+    "Use the provided few-shot GeometryPlan exemplars as placement style guides; copy their numeric discipline and recognitionCriticalParts habit, not their object identity.",
+    "When silhouette.symmetry is bilateral, emit mirrored left/right pairs with mirroredFrom set.",
     "Keep 4 to 18 parts unless the object truly needs more.",
     "Do not emit code, markdown, prose, comments, or trailing commas.",
   ].join("\n");
@@ -127,8 +324,21 @@ function plannerUserPrompt(prompt: string) {
   return JSON.stringify({
     task: "Create a structured physical GeometryPlan for this ShapeForge prompt.",
     prompt,
+    layoutStyle: "LayoutGPT-inspired few-shot numeric layout (concrete relativeSize/relativePosition; recognitionCriticalParts; bilateral mirroredFrom when symmetric).",
     contract: geometryPlanContract,
   });
+}
+
+export function buildPlannerMessages(prompt: string) {
+  const messages: Array<{ role: string; content: string }> = [
+    { role: "system", content: plannerSystemPrompt() },
+  ];
+  for (const shot of LAYOUTGPT_FEW_SHOTS) {
+    messages.push({ role: "user", content: plannerUserPrompt(shot.prompt) });
+    messages.push({ role: "assistant", content: JSON.stringify(shot.plan) });
+  }
+  messages.push({ role: "user", content: plannerUserPrompt(prompt) });
+  return messages;
 }
 
 function extractJsonText(result: unknown): string {
@@ -185,10 +395,7 @@ export class CloudflareWorkersAIProvider implements GeometryPlannerProvider {
 
   async plan(prompt: string): Promise<GeometryPlan> {
     this.logger("planner.ai.start", { model: this.model, promptLength: prompt.length });
-    const messages = [
-      { role: "system", content: plannerSystemPrompt() },
-      { role: "user", content: plannerUserPrompt(prompt) },
-    ];
+    const messages = buildPlannerMessages(prompt);
     const baseInput = {
       messages,
       temperature: 0.2,
