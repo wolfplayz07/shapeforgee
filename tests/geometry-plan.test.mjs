@@ -16,7 +16,7 @@ const vite = await createServer({
 const geometry = await vite.ssrLoadModule("/lib/geometry-plan.ts");
 const planner = await vite.ssrLoadModule("/worker/geometry-planner.ts");
 const shapeforge = await vite.ssrLoadModule("/lib/shapeforge.ts");
-const { geometryPlanToProject, validateAndSanitizeGeometryPlan } = geometry;
+const { geometryPlanToProject, validateAndSanitizeGeometryPlan, sanitizeBilateralMirrors } = geometry;
 const { createForgeProjectWithPlanner } = planner;
 const { validateForgeProject } = shapeforge;
 
@@ -571,5 +571,57 @@ test("Workers AI planner falls back to json_object when json_schema mode fails",
   assert.equal(project.source, "workers-ai");
   assert.equal(project.planner.source, "workers-ai");
   assertValid(project);
+});
+
+test("repairs bilateral mirroredFrom pairs across X and links Left/Right names", () => {
+  const raw = basePlan("Eyeglasses", {
+    silhouette: {
+      form: "paired lenses with bridge",
+      proportions: { width: 1.2, height: 0.4, depth: 0.5 },
+      orientation: "facing forward",
+      dominantAxis: "x",
+      symmetry: "bilateral",
+    },
+    parts: [
+      part("bridge", "Bridge", "structure", "box", [0.16, 0.06, 0.08], [0, 0, 0]),
+      part("leftLens", "Left Lens", "optical", "cylinder", [0.28, 0.28, 0.06], [-0.35, 0, 0.05], { axis: "z", parentId: "bridge" }),
+      part("rightLens", "Right Lens", "optical", "cylinder", [0.22, 0.2, 0.05], [0.2, 0.1, 0.02], { axis: "z", parentId: "bridge", mirroredFrom: "leftLens" }),
+      part("leftTemple", "Left Temple", "support", "box", [0.08, 0.06, 0.45], [-0.55, 0, -0.2], { parentId: "leftLens" }),
+      part("rightTemple", "Right Temple", "support", "box", [0.08, 0.06, 0.45], [0.55, 0, -0.2], { parentId: "rightLens" }),
+    ],
+  });
+  const result = validateAndSanitizeGeometryPlan(raw, "eyeglasses");
+  assert.equal(result.ok, true, result.warnings.join("; "));
+  const byId = Object.fromEntries(result.plan.parts.map((item) => [item.id, item]));
+  assert.equal(byId.rightLens.mirroredFrom, "leftLens");
+  assert.equal(byId.leftLens.mirroredFrom, "rightLens");
+  assert.deepEqual(byId.rightLens.relativeSize, byId.leftLens.relativeSize);
+  assert.equal(byId.rightLens.relativePosition[0], -byId.leftLens.relativePosition[0]);
+  assert.equal(byId.rightLens.relativePosition[1], byId.leftLens.relativePosition[1]);
+  assert.equal(byId.leftTemple.mirroredFrom, "rightTemple");
+  assert.equal(byId.rightTemple.relativePosition[0], -byId.leftTemple.relativePosition[0]);
+  assert.ok(result.warnings.some((warning) => /mirror|linked bilateral/i.test(warning)));
+  assert.equal(typeof sanitizeBilateralMirrors, "function");
+});
+
+test("downgrades bilateral symmetry when no left/right span or mirror pairs exist", () => {
+  const raw = basePlan("One Sided Gadget", {
+    silhouette: {
+      form: "biased blob",
+      proportions: { width: 1, height: 1, depth: 1 },
+      orientation: "upright",
+      dominantAxis: "y",
+      symmetry: "bilateral",
+    },
+    parts: [
+      part("a", "Body", "housing", "box", [0.4, 0.4, 0.4], [0.3, 0, 0]),
+      part("b", "Cap", "surface", "box", [0.2, 0.2, 0.2], [0.45, 0.3, 0]),
+      part("c", "Stem", "support", "cylinder", [0.1, 0.5, 0.1], [0.3, -0.3, 0], { axis: "y" }),
+    ],
+  });
+  const result = validateAndSanitizeGeometryPlan(raw, "one sided gadget");
+  assert.equal(result.ok, true, result.warnings.join("; "));
+  assert.equal(result.plan.silhouette.symmetry, "none");
+  assert.ok(result.warnings.some((warning) => /downgraded symmetry/i.test(warning)));
 });
 
