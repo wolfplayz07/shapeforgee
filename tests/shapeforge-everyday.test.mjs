@@ -364,3 +364,16 @@ test("laundryAppliance semantic family builds washer/dryer silhouettes without e
   assert.ok(!namesOf(hairDryer).some((name) => /Washer Cabinet|Dryer Cabinet|Wash Drum|Dryer Drum/.test(name)));
   assertValid(hairDryer);
 });
+
+test("eyeglasses recovered recipe locks bilateral lenses and temples", () => {
+  const project = createForgeProject("eyeglasses", { detail: "detailed" });
+  assert.equal(project.source, "recovered-recipe");
+  assert.equal(project.name, "Eyeglasses");
+  assert.ok(namesOf(project).includes("Left Lens"));
+  assert.ok(namesOf(project).includes("Right Lens"));
+  assert.ok(namesOf(project).includes("Left Temple Arm"));
+  const left = project.parts.find((part) => part.name === "Left Lens");
+  const right = project.parts.find((part) => part.name === "Right Lens");
+  assert.equal(left.position[0], -right.position[0]);
+  assertValid(project);
+});
