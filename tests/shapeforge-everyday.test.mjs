@@ -308,7 +308,7 @@ test("builds an open-loop horseshoe U with bilateral arms and a connecting toe",
 });
 
 test("office chair uses star base and casters instead of the four-leg dining chair", () => {
-  for (const prompt of ["office chair", "task chair", "swivel chair"]) {
+  for (const prompt of ["office chair", "task chair", "swivel chair", "desk chair", "office desk chair"]) {
     const project = createForgeProject(prompt, { detail: "detailed" });
     const names = namesOf(project);
     assert.equal(project.source, "recovered-recipe", prompt);
@@ -328,6 +328,11 @@ test("office chair uses star base and casters instead of the four-leg dining cha
   assert.ok(namesOf(dining).includes("Front Left Leg"));
   assert.ok(!namesOf(dining).some((name) => /Caster|Star Base Hub|Gas Column/.test(name)));
   assertValid(dining);
+
+  const desk = createForgeProject("desk", { detail: "detailed" });
+  assert.equal(desk.name, "Table");
+  assert.ok(!namesOf(desk).some((name) => /Caster|Star Base Hub|Gas Column|Seat Pan/.test(name)));
+  assertValid(desk);
 });
 
 test("laundryAppliance semantic family builds washer/dryer silhouettes without eating drain pumps or hair dryers", () => {
