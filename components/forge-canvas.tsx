@@ -13,6 +13,7 @@ interface ForgeCanvasProps {
   showRelations: boolean;
   resetSignal: number;
   fitSignal: number;
+  fitSelectionSignal: number;
   onSelect: (id: string) => void;
 }
 
@@ -20,6 +21,7 @@ interface ViewState {
   yaw: number;
   pitch: number;
   zoom: number;
+  focus: Vec3;
 }
 
 interface ScreenPoint {
@@ -50,7 +52,7 @@ interface PartMesh {
   faces: Array<{ indices: number[]; shade: number }>;
 }
 
-const DEFAULT_VIEW: ViewState = { yaw: -0.58, pitch: 0.36, zoom: 1.35 };
+const DEFAULT_VIEW: ViewState = { yaw: -0.58, pitch: 0.36, zoom: 1.35, focus: [0, 0, 0] };
 
 const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
@@ -103,6 +105,50 @@ function explosionOffset(part: ForgePart, byId: Map<string, ForgePart>, explode:
   return offset;
 }
 
+
+function partWorldCenter(part: ForgePart, byId: Map<string, ForgePart>, explode: number): Vec3 {
+  return add(part.position, explosionOffset(part, byId, explode));
+}
+
+/** Axis-aligned bounds of visible parts in exploded world space. */
+export function computePartsAabb(
+  parts: ForgePart[],
+  byId: Map<string, ForgePart>,
+  explode: number,
+): { center: Vec3; span: number } {
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+  let counted = 0;
+
+  for (const part of parts) {
+    if (part.hidden) continue;
+    const center = partWorldCenter(part, byId, explode);
+    const halfX = Math.max(part.size[0], 1) / 2;
+    const halfY = Math.max(part.size[1], 1) / 2;
+    const halfZ = Math.max(part.size[2], 1) / 2;
+    minX = Math.min(minX, center[0] - halfX);
+    minY = Math.min(minY, center[1] - halfY);
+    minZ = Math.min(minZ, center[2] - halfZ);
+    maxX = Math.max(maxX, center[0] + halfX);
+    maxY = Math.max(maxY, center[1] + halfY);
+    maxZ = Math.max(maxZ, center[2] + halfZ);
+    counted += 1;
+  }
+
+  if (counted === 0) {
+    return { center: [0, 0, 0], span: 160 };
+  }
+
+  return {
+    center: [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2],
+    span: Math.max(maxX - minX, maxY - minY, maxZ - minZ, 40),
+  };
+}
+
 export function ForgeCanvas({
   project,
   selectedId,
@@ -111,6 +157,7 @@ export function ForgeCanvas({
   showRelations,
   resetSignal,
   fitSignal,
+  fitSelectionSignal,
   onSelect,
 }: ForgeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -129,17 +176,25 @@ export function ForgeCanvas({
     pinchZoom: 1,
   });
 
-  const fit = useCallback(() => {
+  const fitToParts = useCallback((parts: ForgePart[]) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const extent = project.parts.reduce((maximum, part) => {
-      const distance = Math.hypot(...part.position);
-      return Math.max(maximum, distance + Math.max(...part.size));
-    }, 160);
-    viewRef.current.zoom = clamp(Math.min(rect.width, rect.height) / (extent * 1.65), 0.48, 2.05);
+    const byId = new Map(project.parts.map((part) => [part.id, part]));
+    const { center, span } = computePartsAabb(parts, byId, explode);
+    viewRef.current.focus = center;
+    viewRef.current.zoom = clamp(Math.min(rect.width, rect.height) / (span * 1.85), 0.32, 3.6);
     drawRef.current();
-  }, [project]);
+  }, [explode, project.parts]);
+
+  const fit = useCallback(() => {
+    fitToParts(project.parts.filter((part) => !part.hidden));
+  }, [fitToParts, project.parts]);
+
+  const fitSelection = useCallback(() => {
+    const selected = project.parts.find((part) => part.id === selectedId && !part.hidden);
+    fitToParts(selected ? [selected] : project.parts.filter((part) => !part.hidden));
+  }, [fitToParts, project.parts, selectedId]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -154,7 +209,11 @@ export function ForgeCanvas({
     const byId = new Map(project.parts.map((part) => [part.id, part]));
 
     const projectPoint = (point: Vec3): ScreenPoint => {
-      const [x, y, z] = point;
+      const [x, y, z] = [
+        point[0] - view.focus[0],
+        point[1] - view.focus[1],
+        point[2] - view.focus[2],
+      ];
       const cy = Math.cos(view.yaw);
       const sy = Math.sin(view.yaw);
       const cp = Math.cos(view.pitch);
@@ -359,7 +418,11 @@ export function ForgeCanvas({
     fit();
   }, [fitSignal, fit]);
 
-  const canvasPosition = (event: React.PointerEvent<HTMLCanvasElement>) => {
+  useEffect(() => {
+    if (fitSelectionSignal > 0) fitSelection();
+  }, [fitSelectionSignal, fitSelection]);
+
+  const canvasPosition = (event: { currentTarget: HTMLCanvasElement; clientX: number; clientY: number }) => {
     const rect = event.currentTarget.getBoundingClientRect();
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   };
@@ -422,6 +485,17 @@ export function ForgeCanvas({
     if (pointersRef.current.size < 2) gesture.pinching = false;
   };
 
+  const handleDoubleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    const point = canvasPosition(event);
+    const match = hitsRef.current
+      .filter((hit) => point.x >= hit.minX && point.x <= hit.maxX && point.y >= hit.minY && point.y <= hit.maxY)
+      .sort((a, b) => b.depth - a.depth)[0];
+    if (!match) return;
+    onSelect(match.id);
+    const part = project.parts.find((entry) => entry.id === match.id);
+    if (part && !part.hidden) fitToParts([part]);
+  };
+
   const handleWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
     event.preventDefault();
     viewRef.current.zoom = clamp(viewRef.current.zoom * (event.deltaY > 0 ? 0.9 : 1.1), 0.32, 3.6);
@@ -445,7 +519,7 @@ export function ForgeCanvas({
     <canvas
       ref={canvasRef}
       className="forge-canvas"
-      aria-label={`Interactive 3D exploded view of ${project.name}. Drag to orbit, pinch or scroll to zoom, and tap a component to select it.`}
+      aria-label={`Interactive 3D exploded view of ${project.name}. Drag to orbit, pinch or scroll to zoom, tap a component to select it, and double-click to fit selection.`}
       role="img"
       tabIndex={0}
       onPointerDown={handlePointerDown}
@@ -454,6 +528,7 @@ export function ForgeCanvas({
       onPointerCancel={handlePointerUp}
       onWheel={handleWheel}
       onKeyDown={handleKeyDown}
+      onDoubleClick={handleDoubleClick}
     />
   );
 }
