@@ -742,12 +742,13 @@ function generalUnknownProject(
 
 function coreRecipeMatchesPrompt(project: ForgeProject, prompt: string) {
   const plan = semanticPlan(prompt);
-  if (plan.family !== "genericAssembly") return false;
   const value = prompt.toLowerCase();
   const name = project.name.toLowerCase();
+  // Recovered specialty recipes may own non-generic semantic families (e.g. eyeglasses → pairedWearable).
+  if (plan.family !== "genericAssembly" && project.source !== "recovered-recipe") return false;
   if (name === "table" && /\b(lamp|light|sconce|lantern)\b/.test(value)) return false;
   if (/vehicle|car|automobile|coupe|sedan|roadster/.test(name) && /\b(transmission|gearbox|differential|clutch)\b/.test(value)) return false;
-  if (/\bbicycle\b|\bbike\b/.test(name) && /\b(derailleur|brake|caliper|fork|crankset|cassette|chainring|shifter|hub|bottom bracket)\b/.test(value)) return false;
+  if (/\bbicycle\b|\bbike\b/.test(name) && /\b(derailleur|brake|caliper|fork|crankset|cassette|chainring|shifter|hub|bottom bracket|pump)\b/.test(value)) return false;
   if (name === "chair" && /\bdesk\s+chair\b|\b(office|task|swivel|desk|computer|rolling|wheeled|ergonomic)(\s+\w+)?\s+chair\b/.test(value)) return false;
   if (name === "table" && /\bdesk\s+chair\b|\b(office|task|swivel|desk|computer|rolling|wheeled|ergonomic)(\s+\w+)?\s+chair\b/.test(value)) return false;
   return true;
@@ -789,10 +790,11 @@ export function createForgeProject(
   const cleaned = prompt.trim() || "A-72 bowling machine";
   if (matchesDresser(cleaned)) return dresserProject(cleaned, options);
   if (matchesPen(cleaned)) return penProject(cleaned, options);
-  if (matchesGeneralUnknownProfile(cleaned)) return generalUnknownProject(cleaned, options);
 
   const coreProject = tryRecoveredRecipeProject(cleaned, options);
   if (coreProject) return coreProject;
+
+  if (matchesGeneralUnknownProfile(cleaned)) return generalUnknownProject(cleaned, options);
 
   return generalUnknownProject(cleaned, options);
 }

@@ -457,6 +457,27 @@ function genericRecipe(prompt: string): Recipe {
 }
 
 
+function eyeglassesRecipe(): Recipe {
+  return {
+    name: "Eyeglasses",
+    specs: [
+      // Thin disc lenses facing Z, wide bilateral span — readable as wearable eyewear.
+      cylinder("leftLens", "Left Lens", undefined, "optical", "Thin left optical disc.", [-48, 0, 0], [44, 28, 3], [-110, 10, 0], "#9ec4d6", "z", { relatedKeys: ["bridge", "leftRim"] }),
+      cylinder("rightLens", "Right Lens", undefined, "optical", "Thin right optical disc.", [48, 0, 0], [44, 28, 3], [110, 10, 0], "#9ec4d6", "z", { relatedKeys: ["bridge", "rightRim"] }),
+      cylinder("leftRim", "Left Rim", "leftLens", "structure", "Slim frame around the left lens.", [-48, 0, -1], [52, 34, 4], [-125, 35, -12], "#2a3036", "z", { relatedKeys: ["leftLens", "bridge", "leftTemple"] }),
+      cylinder("rightRim", "Right Rim", "rightLens", "structure", "Slim frame around the right lens.", [48, 0, -1], [52, 34, 4], [125, 35, -12], "#2a3036", "z", { relatedKeys: ["rightLens", "bridge", "rightTemple"] }),
+      box("bridge", "Nose Bridge", undefined, "support", "Narrow bridge joining both rims.", [0, 2, 1], [18, 6, 5], [0, 48, 8], "#2a3036", { relatedKeys: ["leftRim", "rightRim", "leftPad", "rightPad"] }),
+      box("leftPad", "Left Nose Pad", "bridge", "support", "Rests on the left side of the nose.", [-8, -10, 6], [8, 8, 4], [-22, -40, 35], "#d8dee3", { relatedKeys: ["bridge"], detail: true }),
+      box("rightPad", "Right Nose Pad", "bridge", "support", "Rests on the right side of the nose.", [8, -10, 6], [8, 8, 4], [22, -40, 35], "#d8dee3", { relatedKeys: ["bridge"], detail: true }),
+      // Temples run backward in -Z from the outer rims (ear direction), not sideways blobs.
+      box("leftTemple", "Left Temple Arm", "leftRim", "support", "Extends back to the left ear.", [-72, 2, -55], [8, 6, 95], [-160, 8, -120], "#2a3036", { rotation: [0, -12, 0], relatedKeys: ["leftRim", "leftTip"] }),
+      box("rightTemple", "Right Temple Arm", "rightRim", "support", "Extends back to the right ear.", [72, 2, -55], [8, 6, 95], [160, 8, -120], "#2a3036", { rotation: [0, 12, 0], relatedKeys: ["rightRim", "rightTip"] }),
+      box("leftTip", "Left Ear Hook", "leftTemple", "support", "Hooks behind the left ear.", [-74, -4, -105], [7, 10, 16], [-170, -15, -165], "#2a3036", { rotation: [18, -12, 0], relatedKeys: ["leftTemple"], detail: true }),
+      box("rightTip", "Right Ear Hook", "rightTemple", "support", "Hooks behind the right ear.", [74, -4, -105], [7, 10, 16], [170, -15, -165], "#2a3036", { rotation: [18, 12, 0], relatedKeys: ["rightTemple"], detail: true }),
+    ],
+  };
+}
+
 function horseshoeRecipe(): Recipe {
   return {
     name: "Horseshoe",
@@ -483,6 +504,7 @@ function matchRecipe(prompt: string): Recipe | null {
   if (/\btable\b|\bdesk\b/.test(value)) return tableRecipe();
   if (/\bwheel\b/.test(value)) return wheelRecipe();
   if (/\bchair\b|\bstool\b/.test(value)) return chairRecipe();
+  if (/\b(eye\s*-?\s*glasses|eyeglasses|spectacles|sunglasses|glasses|eyewear)\b/.test(value)) return eyeglassesRecipe();
   if (/\bhorse\s*shoe\b|\bu[\s-]?bolt\b|\bu[\s-]?magnet\b|\bhorseshoe\b/.test(value)) return horseshoeRecipe();
   if (/\blamp\b|desk\s+light/.test(value)) return lampRecipe();
   if (/\bbicycle\b|\bbike\b/.test(value)) return bicycleRecipe();
