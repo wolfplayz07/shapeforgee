@@ -122,9 +122,169 @@ const allowedRoles = new Set<PartRole>([
   "storage",
   "other",
 ]);
-const allowedPrimitives = new Set<PrimitiveKind>(["box", "cylinder"]);
+export const ALLOWED_PLAN_PRIMITIVES = [
+  "box",
+  "cylinder",
+  "capsule",
+  "ellipsoid",
+  "frustum",
+  "cone",
+  "wedge",
+] as const satisfies readonly PrimitiveKind[];
+
+const allowedPrimitives = new Set<PrimitiveKind>(ALLOWED_PLAN_PRIMITIVES);
 const allowedAxes = new Set<CylinderAxis>(["x", "y", "z"]);
 const partIdPattern = /^[a-z][a-z0-9_-]{1,40}$/i;
+
+/** Fail closed when part centers barely spread (tiny jitter / mush). Relative units. */
+export const MIN_PLAN_POSITION_SPAN = 0.08;
+/** Fail closed when union AABB of part extents is weakly spread on every axis. */
+export const MIN_PLAN_EXTENT_SPAN = 0.12;
+
+const axialPrimitive = (primitive: PrimitiveKind) => primitive !== "box";
+
+const vec3Schema = {
+  type: "array",
+  items: { type: "number" },
+  minItems: 3,
+  maxItems: 3,
+} as const;
+
+/** JSON Schema for Workers AI response_format.type = json_schema. */
+export const GEOMETRY_PLAN_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "schemaVersion",
+    "requestedObject",
+    "silhouette",
+    "exclusions",
+    "recognitionCriticalParts",
+    "parts",
+    "relationships",
+  ],
+  properties: {
+    schemaVersion: { type: "integer", enum: [1] },
+    requestedObject: {
+      type: "object",
+      additionalProperties: false,
+      required: ["identity", "scope"],
+      properties: {
+        identity: { type: "string" },
+        subtype: { type: "string" },
+        scope: {
+          type: "string",
+          enum: [
+            "complete_object",
+            "component",
+            "subsystem",
+            "attachment",
+            "fixture",
+            "tool",
+            "wearable",
+            "appliance",
+          ],
+        },
+      },
+    },
+    silhouette: {
+      type: "object",
+      additionalProperties: false,
+      required: ["form", "proportions", "orientation", "dominantAxis", "symmetry"],
+      properties: {
+        form: { type: "string" },
+        proportions: {
+          type: "object",
+          additionalProperties: false,
+          required: ["width", "height", "depth"],
+          properties: {
+            width: { type: "number" },
+            height: { type: "number" },
+            depth: { type: "number" },
+          },
+        },
+        orientation: { type: "string" },
+        dominantAxis: { type: "string", enum: ["x", "y", "z"] },
+        symmetry: { type: "string", enum: ["none", "bilateral", "radial", "rotational"] },
+      },
+    },
+    exclusions: { type: "array", items: { type: "string" } },
+    recognitionCriticalParts: { type: "array", items: { type: "string" } },
+    parts: {
+      type: "array",
+      minItems: 3,
+      maxItems: 32,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "name",
+          "role",
+          "primitive",
+          "purpose",
+          "relativeSize",
+          "relativePosition",
+          "rotation",
+        ],
+        properties: {
+          id: { type: "string" },
+          name: { type: "string" },
+          role: {
+            type: "string",
+            enum: [
+              "structure",
+              "housing",
+              "power",
+              "motion",
+              "control",
+              "input",
+              "output",
+              "thermal",
+              "fluid",
+              "electrical",
+              "support",
+              "fastener",
+              "surface",
+              "grip",
+              "optical",
+              "storage",
+              "other",
+            ],
+          },
+          primitive: { type: "string", enum: [...ALLOWED_PLAN_PRIMITIVES] },
+          axis: { type: "string", enum: ["x", "y", "z"] },
+          purpose: { type: "string" },
+          relativeSize: vec3Schema,
+          relativePosition: vec3Schema,
+          rotation: vec3Schema,
+          parentId: { type: ["string", "null"] },
+          relatedIds: { type: "array", items: { type: "string" } },
+          spatialRelationships: { type: "array", items: { type: "string" } },
+          mirroredFrom: { type: "string" },
+          repeatGroup: { type: "string" },
+          color: { type: "string" },
+          detail: { type: "boolean" },
+        },
+      },
+    },
+    relationships: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["from", "to", "type"],
+        properties: {
+          from: { type: "string" },
+          to: { type: "string" },
+          type: { type: "string" },
+          description: { type: "string" },
+        },
+      },
+    },
+    plannerNotes: { type: "string" },
+  },
+} as const;
 
 const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
@@ -188,16 +348,76 @@ function pickVec3Field(
   return { value: fallback, usedFallback: true };
 }
 
-function hasCollapsedSpatialLayout(parts: GeometryPlanPart[]) {
-  if (parts.length < 2) return false;
+function axisSpan(values: number[]) {
+  return Math.max(...values) - Math.min(...values);
+}
+
+function centerAxisSpans(parts: GeometryPlanPart[]) {
+  return [0, 1, 2].map((axis) => axisSpan(parts.map((part) => part.relativePosition[axis])));
+}
+
+function extentAxisSpans(parts: GeometryPlanPart[]) {
+  const mins = [Infinity, Infinity, Infinity];
+  const maxs = [-Infinity, -Infinity, -Infinity];
+  for (const part of parts) {
+    for (let axis = 0; axis < 3; axis += 1) {
+      const half = part.relativeSize[axis] / 2;
+      mins[axis] = Math.min(mins[axis], part.relativePosition[axis] - half);
+      maxs[axis] = Math.max(maxs[axis], part.relativePosition[axis] + half);
+    }
+  }
+  return mins.map((min, axis) => maxs[axis] - min);
+}
+
+function hasNearIdenticalSizes(parts: GeometryPlanPart[]) {
+  const signature = (part: GeometryPlanPart) =>
+    part.relativeSize.map((value) => value.toFixed(3)).join(",");
+  const first = signature(parts[0]);
+  return parts.every((part) => signature(part) === first);
+}
+
+function hasCollapsedSpatialLayout(parts: GeometryPlanPart[]): { collapsed: boolean; reason?: string } {
+  if (parts.length < 2) return { collapsed: false };
   const allAtOrigin = parts.every((part) =>
     part.relativePosition.every((value) => Math.abs(value) < 1e-6),
   );
-  if (allAtOrigin) return true;
+  if (allAtOrigin) {
+    return { collapsed: true, reason: "all parts share the origin" };
+  }
   const signature = (part: GeometryPlanPart) =>
     `${part.relativePosition.map((value) => value.toFixed(4)).join(",")}|${part.relativeSize.map((value) => value.toFixed(4)).join(",")}`;
   const first = signature(parts[0]);
-  return parts.every((part) => signature(part) === first);
+  if (parts.every((part) => signature(part) === first)) {
+    return { collapsed: true, reason: "all parts share identical origin/size" };
+  }
+
+  const centerSpans = centerAxisSpans(parts);
+  const maxCenterSpan = Math.max(...centerSpans);
+  if (maxCenterSpan < MIN_PLAN_POSITION_SPAN) {
+    return {
+      collapsed: true,
+      reason: `part centers span only ${maxCenterSpan.toFixed(4)} (min ${MIN_PLAN_POSITION_SPAN})`,
+    };
+  }
+
+  const extentSpans = extentAxisSpans(parts);
+  const maxExtentSpan = Math.max(...extentSpans);
+  if (maxExtentSpan < MIN_PLAN_EXTENT_SPAN) {
+    return {
+      collapsed: true,
+      reason: `union AABB span only ${maxExtentSpan.toFixed(4)} (min ${MIN_PLAN_EXTENT_SPAN})`,
+    };
+  }
+
+  // Tiny positional jitter with cloned sizes still collapses into stacked mush.
+  if (hasNearIdenticalSizes(parts) && maxCenterSpan < MIN_PLAN_POSITION_SPAN * 2) {
+    return {
+      collapsed: true,
+      reason: `near-identical sizes with weak center span ${maxCenterSpan.toFixed(4)}`,
+    };
+  }
+
+  return { collapsed: false };
 }
 
 function normalizeToken(value: string) {
@@ -268,6 +488,9 @@ export function validateAndSanitizeGeometryPlan(raw: unknown, prompt: string): P
       continue;
     }
     const primitive = allowedPrimitives.has(entry.primitive as PrimitiveKind) ? entry.primitive as PrimitiveKind : "box";
+    if (!allowedPrimitives.has(entry.primitive as PrimitiveKind) && entry.primitive !== undefined) {
+      warnings.push(`Repaired unsupported primitive for ${id}; defaulted to box.`);
+    }
     const role = allowedRoles.has(entry.role as PartRole) ? entry.role as PartRole : "other";
     const sizeField = pickVec3Field(entry, ["relativeSize", "relative_size", "size", "dimensions"], [0.35, 0.2, 0.2], 0.03, 1.8);
     const positionField = pickVec3Field(entry, ["relativePosition", "relative_position", "position", "offset"], [0, 0, 0], -1.5, 1.5);
@@ -279,7 +502,7 @@ export function validateAndSanitizeGeometryPlan(raw: unknown, prompt: string): P
       name,
       role,
       primitive,
-      axis: primitive === "cylinder" && allowedAxes.has(entry.axis as CylinderAxis) ? entry.axis as CylinderAxis : undefined,
+      axis: axialPrimitive(primitive) && allowedAxes.has(entry.axis as CylinderAxis) ? entry.axis as CylinderAxis : undefined,
       purpose: asString(entry.purpose, `Represents the ${name.toLowerCase()} in the requested object.`),
       relativeSize: sizeField.value,
       relativePosition: positionField.value,
@@ -312,10 +535,14 @@ export function validateAndSanitizeGeometryPlan(raw: unknown, prompt: string): P
   }
 
   if (hasHierarchyCycle(parts)) return { ok: false, warnings: [...warnings, "Planner hierarchy contains a cycle."] };
-  if (hasCollapsedSpatialLayout(parts)) {
+  const spatialCollapse = hasCollapsedSpatialLayout(parts);
+  if (spatialCollapse.collapsed) {
     return {
       ok: false,
-      warnings: [...warnings, "Planner layout is collapsed: all parts share identical origin/size (invalid spatial assembly)."],
+      warnings: [
+        ...warnings,
+        `Planner layout is collapsed: ${spatialCollapse.reason} (invalid spatial assembly).`,
+      ],
     };
   }
 
@@ -389,7 +616,7 @@ export function geometryPlanToProject(
       id: idByPlanId.get(part.id)!,
       name: part.name,
       kind: part.primitive,
-      axis: part.primitive === "cylinder" ? part.axis ?? plan.silhouette.dominantAxis : undefined,
+      axis: axialPrimitive(part.primitive) ? part.axis ?? plan.silhouette.dominantAxis : undefined,
       parent: part.parentId && selectedIds.has(part.parentId) ? idByPlanId.get(part.parentId)! : null,
       category: part.role,
       purpose: `${part.purpose}${spatial}`,
