@@ -306,3 +306,56 @@ test("builds an open-loop horseshoe U with bilateral arms and a connecting toe",
   assert.equal(ubolt.name, "Horseshoe");
   assertValid(ubolt);
 });
+
+test("office chair uses star base and casters instead of the four-leg dining chair", () => {
+  for (const prompt of ["office chair", "task chair", "swivel chair"]) {
+    const project = createForgeProject(prompt, { detail: "detailed" });
+    const names = namesOf(project);
+    assert.equal(project.source, "recovered-recipe", prompt);
+    assert.equal(project.name, "Office Chair", prompt);
+    assert.ok(names.includes("Seat Pan"), prompt);
+    assert.ok(names.includes("Backrest"), prompt);
+    assert.ok(names.includes("Gas Column"), prompt);
+    assert.ok(names.includes("Star Base Hub"), prompt);
+    assert.ok(names.some((name) => /Caster/.test(name)), prompt);
+    assert.ok(!names.some((name) => /Front Left Leg|Front Right Leg|Rear Left Leg|Rear Right Leg/.test(name)), prompt);
+    assert.ok(extents(project)[1] > 100, `${prompt} should be tall enough for pedestal seating`);
+    assertValid(project);
+  }
+
+  const dining = createForgeProject("dining chair", { detail: "detailed" });
+  assert.equal(dining.name, "Chair");
+  assert.ok(namesOf(dining).includes("Front Left Leg"));
+  assert.ok(!namesOf(dining).some((name) => /Caster|Star Base Hub|Gas Column/.test(name)));
+  assertValid(dining);
+});
+
+test("laundryAppliance semantic family builds washer/dryer silhouettes without eating drain pumps or hair dryers", () => {
+  const washer = createForgeProject("washing machine", { detail: "detailed" });
+  const washerNames = namesOf(washer);
+  assert.ok(washer.history.some((line) => /Semantic plan: laundryAppliance/i.test(line)), washer.history.join(" | "));
+  assert.ok(washerNames.includes("Washer Cabinet"));
+  assert.ok(washerNames.includes("Wash Drum"));
+  assert.ok(washerNames.includes("Control Console"));
+  assert.ok(washerNames.includes("Top Lid Panel") || washerNames.includes("Door With Glass Port"));
+  assert.ok(!washerNames.some((name) => /Main Frame|Outer Body|Drive Core/.test(name)));
+  assert.ok(extents(washer)[1] > extents(washer)[0] * 0.7, "washer should read as upright cabinet");
+  assertValid(washer);
+
+  const dryer = createForgeProject("clothes dryer", { detail: "detailed" });
+  const dryerNames = namesOf(dryer);
+  assert.ok(dryerNames.includes("Dryer Cabinet"));
+  assert.ok(dryerNames.includes("Dryer Drum"));
+  assert.ok(dryerNames.includes("Control Console"));
+  assertValid(dryer);
+
+  const drainPump = createForgeProject("washing machine drain pump", { detail: "detailed" });
+  const drainPumpNames = namesOf(drainPump);
+  assert.ok(drainPumpNames.some((name) => /Pump Barrel|Housing|Shaft|Gear Case/.test(name)));
+  assert.ok(!drainPumpNames.some((name) => /washer cabinet|dryer cabinet|wash drum|dryer drum|control console/i.test(name)));
+  assertValid(drainPump);
+
+  const hairDryer = createForgeProject("portable hair dryer with handle", { detail: "detailed" });
+  assert.ok(!namesOf(hairDryer).some((name) => /Washer Cabinet|Dryer Cabinet|Wash Drum|Dryer Drum/.test(name)));
+  assertValid(hairDryer);
+});
