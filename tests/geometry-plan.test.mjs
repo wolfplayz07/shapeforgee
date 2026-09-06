@@ -16,7 +16,7 @@ const vite = await createServer({
 const geometry = await vite.ssrLoadModule("/lib/geometry-plan.ts");
 const planner = await vite.ssrLoadModule("/worker/geometry-planner.ts");
 const shapeforge = await vite.ssrLoadModule("/lib/shapeforge.ts");
-const { geometryPlanToProject, validateAndSanitizeGeometryPlan, sanitizeBilateralMirrors } = geometry;
+const { geometryPlanToProject, validateAndSanitizeGeometryPlan, applyHolodeckConstraintRepairs, assertRecognitionCriticalCoverage, sanitizeBilateralMirrors } = geometry;
 const { createForgeProjectWithPlanner } = planner;
 const { validateForgeProject } = shapeforge;
 
@@ -623,5 +623,59 @@ test("downgrades bilateral symmetry when no left/right span or mirror pairs exis
   assert.equal(result.ok, true, result.warnings.join("; "));
   assert.equal(result.plan.silhouette.symmetry, "none");
   assert.ok(result.warnings.some((warning) => /downgraded symmetry/i.test(warning)));
+});
+
+test("seeds empty recognitionCriticalParts and fails closed when all are unmatched", () => {
+  const missing = basePlan("Mystery Box", {
+    recognitionCriticalParts: [],
+    parts: [
+      part("a", "Alpha", "housing", "box", [0.4, 0.4, 0.4], [-0.2, 0, 0]),
+      part("b", "Beta", "support", "box", [0.2, 0.2, 0.2], [0.2, 0, 0]),
+      part("c", "Gamma", "surface", "box", [0.15, 0.15, 0.15], [0, 0.3, 0]),
+    ],
+  });
+  const missingResult = validateAndSanitizeGeometryPlan(missing, "mystery box");
+  assert.equal(missingResult.ok, true, missingResult.warnings.join("; "));
+  assert.ok(missingResult.plan.recognitionCriticalParts.length >= 1);
+  assert.ok(missingResult.warnings.some((warning) => /Seeded recognitionCriticalParts/i.test(warning)));
+
+  const unmatched = basePlan("Mystery Box", {
+    recognitionCriticalParts: ["turboEncabulator", "fluxCapacitor"],
+    parts: [
+      part("a", "Alpha", "housing", "box", [0.4, 0.4, 0.4], [-0.2, 0, 0]),
+      part("b", "Beta", "support", "box", [0.2, 0.2, 0.2], [0.2, 0, 0]),
+      part("c", "Gamma", "surface", "box", [0.15, 0.15, 0.15], [0, 0.3, 0]),
+    ],
+  });
+  const unmatchedResult = validateAndSanitizeGeometryPlan(unmatched, "mystery box");
+  assert.equal(unmatchedResult.ok, false);
+  assert.ok(unmatchedResult.warnings.some((warning) => /unmatched/i.test(warning)));
+});
+
+test("Holodeck-style spatialRelationships move parts above/below anchors", () => {
+  const raw = basePlan("Stack Lamp", {
+    recognitionCriticalParts: ["shade", "base"],
+    parts: [
+      part("base", "Weighted Base", "support", "cylinder", [0.4, 0.1, 0.4], [0, 0, 0], { axis: "y" }),
+      part("shade", "Lamp Shade", "housing", "frustum", [0.35, 0.25, 0.35], [0, 0.02, 0], {
+        axis: "y",
+        parentId: "base",
+        spatialRelationships: ["above base"],
+      }),
+      part("bulb", "Bulb", "optical", "ellipsoid", [0.12, 0.14, 0.12], [0.5, 0.5, 0.5], {
+        axis: "y",
+        parentId: "shade",
+        spatialRelationships: ["inside shade"],
+      }),
+    ],
+  });
+  const result = validateAndSanitizeGeometryPlan(raw, "stack lamp");
+  assert.equal(result.ok, true, result.warnings.join("; "));
+  const byId = Object.fromEntries(result.plan.parts.map((item) => [item.id, item]));
+  assert.ok(byId.shade.relativePosition[1] > byId.base.relativePosition[1] + 0.05);
+  assert.ok(Math.abs(byId.bulb.relativePosition[0] - byId.shade.relativePosition[0]) < 0.08);
+  assert.ok(result.warnings.some((warning) => /Holodeck repair/i.test(warning)));
+  assert.equal(typeof applyHolodeckConstraintRepairs, "function");
+  assert.equal(typeof assertRecognitionCriticalCoverage, "function");
 });
 
