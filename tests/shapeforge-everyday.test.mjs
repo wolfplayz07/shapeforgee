@@ -387,4 +387,12 @@ test("eyeglasses recovered recipe reads as wearable eyewear", () => {
     assertValid(project);
   }
 });
-
+test("flashlight recovered recipe builds head/body/tail hierarchy", () => {
+  const project = createForgeProject("flashlight", { detail: "detailed" });
+  assert.equal(project.source, "recovered-recipe");
+  assert.equal(project.name, "Flashlight");
+  assert.ok(namesOf(project).includes("Body Tube"));
+  assert.ok(namesOf(project).includes("Head Housing"));
+  assert.ok(namesOf(project).includes("Tailcap"));
+  assertValid(project);
+});

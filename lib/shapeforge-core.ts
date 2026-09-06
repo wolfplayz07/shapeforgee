@@ -478,6 +478,20 @@ function eyeglassesRecipe(): Recipe {
   };
 }
 
+function flashlightRecipe(): Recipe {
+  return {
+    name: "Flashlight",
+    specs: [
+      cylinder("body", "Body Tube", undefined, "housing", "Main handheld housing.", [0, 0, -8], [36, 36, 110], [0, 0, -40], "#4a5560", "z", { relatedKeys: ["head", "tail"] }),
+      cylinder("head", "Head Housing", "body", "housing", "Holds reflector and lens.", [0, 0, 58], [48, 48, 36], [0, 40, 95], "#5c6874", "z", { relatedKeys: ["lens", "reflector"] }),
+      cylinder("lens", "Front Lens", "head", "optical", "Protects the emitter.", [0, 0, 78], [34, 34, 6], [0, 55, 130], "#9dc2d1", "z", { relatedKeys: ["reflector"], detail: true }),
+      cylinder("reflector", "Reflector Cup", "head", "optical", "Focuses the beam.", [0, 0, 64], [30, 30, 20], [0, 70, 110], "#c5ced4", "z", { relatedKeys: ["lens"], detail: true }),
+      cylinder("tail", "Tailcap", "body", "housing", "Closes the battery tube.", [0, 0, -72], [36, 36, 18], [0, -40, -120], "#3d4650", "z", { relatedKeys: ["switch"] }),
+      cylinder("switch", "Tail Switch", "tail", "control", "Momentary power control.", [0, 0, -88], [16, 16, 10], [0, -55, -145], "#2c3339", "z", { relatedKeys: ["tail"], detail: true }),
+    ],
+  };
+}
+
 function horseshoeRecipe(): Recipe {
   return {
     name: "Horseshoe",
@@ -505,6 +519,7 @@ function matchRecipe(prompt: string): Recipe | null {
   if (/\bwheel\b/.test(value)) return wheelRecipe();
   if (/\bchair\b|\bstool\b/.test(value)) return chairRecipe();
   if (/\b(eye\s*-?\s*glasses|eyeglasses|spectacles|sunglasses|glasses|eyewear)\b/.test(value)) return eyeglassesRecipe();
+  if (/\b(flash\s*-?\s*light|flashlight|torch)\b/.test(value)) return flashlightRecipe();
   if (/\bhorse\s*shoe\b|\bu[\s-]?bolt\b|\bu[\s-]?magnet\b|\bhorseshoe\b/.test(value)) return horseshoeRecipe();
   if (/\blamp\b|desk\s+light/.test(value)) return lampRecipe();
   if (/\bbicycle\b|\bbike\b/.test(value)) return bicycleRecipe();
