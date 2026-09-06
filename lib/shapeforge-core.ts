@@ -499,7 +499,7 @@ function matchRecipe(prompt: string): Recipe | null {
   if (/\btable\b|\bdesk\b/.test(value)) return tableRecipe();
   if (/\bwheel\b/.test(value)) return wheelRecipe();
   if (/\bchair\b|\bstool\b/.test(value)) return chairRecipe();
-  if (/\b(eye\s*-?\s*glasses|eyeglasses|spectacles|sunglasses)\b/.test(value)) return eyeglassesRecipe();
+  if (/\b(eye\s*-?\s*glasses|eyeglasses|spectacles|sunglasses|glasses|eyewear)\b/.test(value)) return eyeglassesRecipe();
   if (/\bhorse\s*shoe\b|\bu[\s-]?bolt\b|\bu[\s-]?magnet\b|\bhorseshoe\b/.test(value)) return horseshoeRecipe();
   if (/\blamp\b|desk\s+light/.test(value)) return lampRecipe();
   if (/\bbicycle\b|\bbike\b/.test(value)) return bicycleRecipe();

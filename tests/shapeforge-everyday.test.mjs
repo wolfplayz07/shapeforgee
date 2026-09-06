@@ -377,3 +377,12 @@ test("eyeglasses recovered recipe locks bilateral lenses and temples", () => {
   assert.equal(left.position[0], -right.position[0]);
   assertValid(project);
 });
+
+test("bare glasses prompt hits eyeglasses recovered recipe", () => {
+  const project = createForgeProject("glasses", { detail: "detailed" });
+  assert.equal(project.source, "recovered-recipe");
+  assert.equal(project.name, "Eyeglasses");
+  assert.ok(namesOf(project).includes("Left Lens"));
+  assert.ok(namesOf(project).includes("Right Temple Arm"));
+  assertValid(project);
+});
