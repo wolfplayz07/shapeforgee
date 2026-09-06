@@ -557,11 +557,15 @@ export function validateAndSanitizeGeometryPlan(raw: unknown, prompt: string): P
 
   const dominantAxis = allowedAxes.has(rawSilhouette.dominantAxis as CylinderAxis) ? rawSilhouette.dominantAxis as CylinderAxis : "x";
   const symmetry = allowedSymmetry.has(rawSilhouette.symmetry as SymmetryKind) ? rawSilhouette.symmetry as SymmetryKind : "none";
-  const proportions = {
+  const proportionsRaw = {
     width: clamp(asFiniteNumber(rawProportions.width, 1), 0.2, 4),
     height: clamp(asFiniteNumber(rawProportions.height, 1), 0.2, 4),
     depth: clamp(asFiniteNumber(rawProportions.depth, 1), 0.2, 4),
   };
+  const proportions = normalizeSilhouetteProportions(proportionsRaw, dominantAxis);
+  if (proportions.width !== proportionsRaw.width || proportions.height !== proportionsRaw.height || proportions.depth !== proportionsRaw.depth) {
+    warnings.push("Normalized silhouette proportions toward dominant axis (CadQuery/OpenJSCAD-style aspect boost).");
+  }
 
   const exclusions = asStringArray(raw.exclusions);
   const rawParts = Array.isArray(raw.parts) ? raw.parts : [];
@@ -685,6 +689,21 @@ const palette = ["#667d8d", "#44515b", "#8d9aa3", "#c59644", "#3b7894", "#2f363b
 
 function scaleVec(value: Vec3, scale: number): Vec3 {
   return value.map((entry) => entry * scale) as Vec3;
+}
+
+/** CadQuery/OpenJSCAD-inspired silhouette proportion normalization for recognizability. */
+export function normalizeSilhouetteProportions(proportions: { width: number; height: number; depth: number }, dominantAxis: CylinderAxis) {
+  const clampAxis = (value: number) => clamp(value, 0.25, 4);
+  let width = clampAxis(proportions.width);
+  let height = clampAxis(proportions.height);
+  let depth = clampAxis(proportions.depth);
+  const values = [width, height, depth];
+  const median = [...values].sort((a, b) => a - b)[1];
+  const boost = Math.max(median * 1.15, median + 0.12);
+  if (dominantAxis === "x" && width < boost) width = boost;
+  if (dominantAxis === "y" && height < boost) height = boost;
+  if (dominantAxis === "z" && depth < boost) depth = boost;
+  return { width, height, depth };
 }
 
 export function geometryPlanToProject(
