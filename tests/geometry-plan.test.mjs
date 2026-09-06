@@ -17,7 +17,7 @@ const geometry = await vite.ssrLoadModule("/lib/geometry-plan.ts");
 const planner = await vite.ssrLoadModule("/worker/geometry-planner.ts");
 const shapeforge = await vite.ssrLoadModule("/lib/shapeforge.ts");
 const { geometryPlanToProject, validateAndSanitizeGeometryPlan, applyHolodeckConstraintRepairs, assertRecognitionCriticalCoverage, sanitizeBilateralMirrors } = geometry;
-const { createForgeProjectWithPlanner } = planner;
+const { createForgeProjectWithPlanner, DEFAULT_TIMEOUT_MS } = planner;
 const { validateForgeProject } = shapeforge;
 
 after(async () => {
@@ -518,6 +518,10 @@ test("high-confidence recovered recipes run before Workers AI", async () => {
   assert.equal(ai.calls.length, 0);
   assert.ok(names(project).includes("Pin Table"));
   assertValid(project);
+});
+
+test("Workers AI planner default timeout is 15s for Cloud Ship latency", () => {
+  assert.equal(DEFAULT_TIMEOUT_MS, 15_000);
 });
 
 test("Workers AI planner includes LayoutGPT-style few-shot exemplars before the live prompt", async () => {
