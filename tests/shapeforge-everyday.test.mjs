@@ -186,7 +186,7 @@ test("semantic planner fixes observed subject, modifier, and exclusion regressio
   assert.ok(glassesNames.includes("Right Temple Arm"));
   assert.ok(!glassesNames.some((name) => /Outer Shell/.test(name)));
   assert.ok(glassesExtents[0] > glassesExtents[1] * 2, "eyewear should be wide and thin");
-  assert.ok(glassesExtents[0] > glassesExtents[2] * 1.4, "eyewear should not be box-deep");
+  assert.ok(glassesExtents[2] > glassesExtents[1], "temples should add ear-ward depth");
   const leftLens = glasses.parts.find((part) => part.name === "Left Lens");
   const rightLens = glasses.parts.find((part) => part.name === "Right Lens");
   assert.equal(leftLens.position[0], -rightLens.position[0], "lenses should be bilaterally placed");
@@ -365,24 +365,26 @@ test("laundryAppliance semantic family builds washer/dryer silhouettes without e
   assertValid(hairDryer);
 });
 
-test("eyeglasses recovered recipe locks bilateral lenses and temples", () => {
-  const project = createForgeProject("eyeglasses", { detail: "detailed" });
-  assert.equal(project.source, "recovered-recipe");
-  assert.equal(project.name, "Eyeglasses");
-  assert.ok(namesOf(project).includes("Left Lens"));
-  assert.ok(namesOf(project).includes("Right Lens"));
-  assert.ok(namesOf(project).includes("Left Temple Arm"));
-  const left = project.parts.find((part) => part.name === "Left Lens");
-  const right = project.parts.find((part) => part.name === "Right Lens");
-  assert.equal(left.position[0], -right.position[0]);
-  assertValid(project);
+test("eyeglasses recovered recipe reads as wearable eyewear", () => {
+  for (const prompt of ["eyeglasses", "glasses", "spectacles"]) {
+    const project = createForgeProject(prompt, { detail: "detailed" });
+    assert.equal(project.source, "recovered-recipe", prompt);
+    assert.equal(project.name, "Eyeglasses", prompt);
+    const names = namesOf(project);
+    assert.ok(names.includes("Left Lens"), prompt);
+    assert.ok(names.includes("Right Lens"), prompt);
+    assert.ok(names.includes("Nose Bridge"), prompt);
+    assert.ok(names.includes("Left Temple Arm"), prompt);
+    assert.ok(names.includes("Right Temple Arm"), prompt);
+    const left = project.parts.find((part) => part.name === "Left Lens");
+    const right = project.parts.find((part) => part.name === "Right Lens");
+    const leftTemple = project.parts.find((part) => part.name === "Left Temple Arm");
+    assert.equal(left.position[0], -right.position[0], prompt);
+    assert.ok(left.size[2] < left.size[0] * 0.25, "lenses should be thin discs");
+    assert.ok(extents(project)[0] > extents(project)[1] * 2, "eyewear should be wide and short");
+    assert.ok(extents(project)[2] > extents(project)[1] * 1.5, "temples should create depth toward the ears");
+    assert.ok(leftTemple.position[2] < left.position[2] - 20, "temples extend backward from lenses");
+    assertValid(project);
+  }
 });
 
-test("bare glasses prompt hits eyeglasses recovered recipe", () => {
-  const project = createForgeProject("glasses", { detail: "detailed" });
-  assert.equal(project.source, "recovered-recipe");
-  assert.equal(project.name, "Eyeglasses");
-  assert.ok(namesOf(project).includes("Left Lens"));
-  assert.ok(namesOf(project).includes("Right Temple Arm"));
-  assertValid(project);
-});
