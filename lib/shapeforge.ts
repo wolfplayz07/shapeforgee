@@ -748,7 +748,8 @@ function coreRecipeMatchesPrompt(project: ForgeProject, prompt: string) {
   if (name === "table" && /\b(lamp|light|sconce|lantern)\b/.test(value)) return false;
   if (/vehicle|car|automobile|coupe|sedan|roadster/.test(name) && /\b(transmission|gearbox|differential|clutch)\b/.test(value)) return false;
   if (/\bbicycle\b|\bbike\b/.test(name) && /\b(derailleur|brake|caliper|fork|crankset|cassette|chainring|shifter|hub|bottom bracket)\b/.test(value)) return false;
-  if (name === "chair" && /\b(office|task|swivel|desk|computer|rolling|wheeled|ergonomic)\s+chair\b/.test(value)) return false;
+  if (name === "chair" && /\bdesk\s+chair\b|\b(office|task|swivel|desk|computer|rolling|wheeled|ergonomic)(\s+\w+)?\s+chair\b/.test(value)) return false;
+  if (name === "table" && /\bdesk\s+chair\b|\b(office|task|swivel|desk|computer|rolling|wheeled|ergonomic)(\s+\w+)?\s+chair\b/.test(value)) return false;
   return true;
 }
 
