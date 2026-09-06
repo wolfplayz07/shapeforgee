@@ -387,4 +387,12 @@ test("eyeglasses recovered recipe reads as wearable eyewear", () => {
     assertValid(project);
   }
 });
-
+test("stapler recovered recipe builds anvil magazine hinge layout", () => {
+  const project = createForgeProject("stapler", { detail: "detailed" });
+  assert.equal(project.source, "recovered-recipe");
+  assert.equal(project.name, "Stapler");
+  assert.ok(namesOf(project).includes("Base Anvil"));
+  assert.ok(namesOf(project).includes("Staple Magazine"));
+  assert.ok(namesOf(project).includes("Rear Hinge"));
+  assertValid(project);
+});

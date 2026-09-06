@@ -478,6 +478,20 @@ function eyeglassesRecipe(): Recipe {
   };
 }
 
+function staplerRecipe(): Recipe {
+  return {
+    name: "Stapler",
+    specs: [
+      box("base", "Base Anvil", undefined, "structure", "Supports the stapler and clinches staples.", [0, -18, 0], [42, 12, 120], [0, -70, 0], "#596877", { relatedKeys: ["magazine", "hinge"] }),
+      box("magazine", "Staple Magazine", "hinge", "housing", "Holds the staple strip above the anvil.", [0, 10, -6], [36, 18, 108], [0, 40, -20], "#8a96a0", { relatedKeys: ["base", "cap"] }),
+      cylinder("hinge", "Rear Hinge", "base", "motion", "Pivots the magazine onto the anvil.", [0, 0, -52], [40, 14, 14], [0, 20, -95], "#344b60", "x", { relatedKeys: ["magazine", "base"] }),
+      box("cap", "Top Cap", "magazine", "surface", "Press surface on top of the magazine.", [0, 24, 8], [34, 8, 70], [0, 70, 25], "#3d5266", { relatedKeys: ["magazine"], detail: true }),
+      box("noseL", "Left Nose Guide", "magazine", "output", "Guides staples on the left of the nose.", [-10, 8, 58], [8, 10, 20], [-35, 35, 100], "#d4a35a", { relatedKeys: ["noseR", "magazine"], detail: true }),
+      box("noseR", "Right Nose Guide", "magazine", "output", "Guides staples on the right of the nose.", [10, 8, 58], [8, 10, 20], [35, 35, 100], "#d4a35a", { relatedKeys: ["noseL", "magazine"], detail: true }),
+    ],
+  };
+}
+
 function horseshoeRecipe(): Recipe {
   return {
     name: "Horseshoe",
@@ -505,6 +519,7 @@ function matchRecipe(prompt: string): Recipe | null {
   if (/\bwheel\b/.test(value)) return wheelRecipe();
   if (/\bchair\b|\bstool\b/.test(value)) return chairRecipe();
   if (/\b(eye\s*-?\s*glasses|eyeglasses|spectacles|sunglasses|glasses|eyewear)\b/.test(value)) return eyeglassesRecipe();
+  if (/\bstapler\b/.test(value)) return staplerRecipe();
   if (/\bhorse\s*shoe\b|\bu[\s-]?bolt\b|\bu[\s-]?magnet\b|\bhorseshoe\b/.test(value)) return horseshoeRecipe();
   if (/\blamp\b|desk\s+light/.test(value)) return lampRecipe();
   if (/\bbicycle\b|\bbike\b/.test(value)) return bicycleRecipe();
