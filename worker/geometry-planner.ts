@@ -261,6 +261,31 @@ const LAYOUTGPT_FEW_SHOTS: Array<{ prompt: string; plan: Record<string, unknown>
       plannerNotes: "LayoutGPT-style bilateral stapler: base/anvil, hinged magazine, mirrored nose guides.",
     },
   },
+  {
+    prompt: "flashlight",
+    plan: {
+      schemaVersion: GEOMETRY_PLAN_SCHEMA_VERSION,
+      requestedObject: { identity: "Flashlight", scope: "tool", subtype: "handheld" },
+      silhouette: { form: "cylindrical body with head and tailcap", proportions: { width: 0.35, height: 0.35, depth: 1.2 }, orientation: "lying along depth", dominantAxis: "z", symmetry: "radial" },
+      exclusions: [],
+      recognitionCriticalParts: ["body", "head", "lens"],
+      parts: [
+        { id: "body", name: "Body Tube", role: "housing", primitive: "cylinder", axis: "z", purpose: "Main housing", relativeSize: [0.28, 0.28, 0.7], relativePosition: [0, 0, -0.05], rotation: [0, 0, 0], parentId: null, relatedIds: ["head", "tail"], spatialRelationships: ["between head and tail"] },
+        { id: "head", name: "Head Housing", role: "housing", primitive: "cylinder", axis: "z", purpose: "Holds reflector and lens", relativeSize: [0.34, 0.34, 0.28], relativePosition: [0, 0, 0.45], rotation: [0, 0, 0], parentId: "body", relatedIds: ["lens", "reflector"], spatialRelationships: ["front of body"] },
+        { id: "lens", name: "Front Lens", role: "optical", primitive: "cylinder", axis: "z", purpose: "Protects the emitter", relativeSize: [0.26, 0.26, 0.04], relativePosition: [0, 0, 0.58], rotation: [0, 0, 0], parentId: "head", relatedIds: ["reflector"], spatialRelationships: ["front of head"], detail: true },
+        { id: "reflector", name: "Reflector Cup", role: "optical", primitive: "frustum", axis: "z", purpose: "Focuses the beam", relativeSize: [0.24, 0.24, 0.16], relativePosition: [0, 0, 0.48], rotation: [0, 0, 0], parentId: "head", relatedIds: ["lens"], spatialRelationships: ["inside head"], detail: true },
+        { id: "tail", name: "Tailcap", role: "housing", primitive: "cylinder", axis: "z", purpose: "Closes the battery tube", relativeSize: [0.28, 0.28, 0.14], relativePosition: [0, 0, -0.48], rotation: [0, 0, 0], parentId: "body", relatedIds: ["switch"], spatialRelationships: ["back of body"] },
+        { id: "switch", name: "Tail Switch", role: "control", primitive: "cylinder", axis: "z", purpose: "Momentary power control", relativeSize: [0.12, 0.12, 0.08], relativePosition: [0, 0, -0.58], rotation: [0, 0, 0], parentId: "tail", relatedIds: ["tail"], spatialRelationships: ["behind tail"], detail: true }
+      ],
+      relationships: [
+        { from: "head", to: "body", type: "child-of", description: "PartNeXt hierarchy: head under body" },
+        { from: "lens", to: "head", type: "child-of", description: "lens under head housing" },
+        { from: "reflector", to: "head", type: "child-of", description: "reflector under head housing" },
+        { from: "tail", to: "body", type: "child-of", description: "tailcap under body" }
+      ],
+      plannerNotes: "PartNeXt-style hierarchy: body owns head/tail; head owns lens/reflector."
+    }
+  }
 ];
 
 const geometryPlanContract = {
@@ -315,6 +340,7 @@ function plannerSystemPrompt() {
     "Apply LayoutGPT-style compositional layout: every part needs concrete relativeSize and relativePosition (CSS-like numeric placement), never identical defaults at the origin.",
     "Use the provided few-shot GeometryPlan exemplars as placement style guides; copy their numeric discipline and recognitionCriticalParts habit, not their object identity.",
     "When silhouette.symmetry is bilateral, emit mirrored left/right pairs with mirroredFrom set.",
+    "Use PartNeXt-style hierarchies: housing/structure parents own internal children via parentId; keep trees acyclic and recognition-critical leaves attached.",
     "Keep 4 to 18 parts unless the object truly needs more.",
     "Do not emit code, markdown, prose, comments, or trailing commas.",
   ].join("\n");
@@ -324,7 +350,7 @@ function plannerUserPrompt(prompt: string) {
   return JSON.stringify({
     task: "Create a structured physical GeometryPlan for this ShapeForge prompt.",
     prompt,
-    layoutStyle: "LayoutGPT-inspired few-shot numeric layout (concrete relativeSize/relativePosition; recognitionCriticalParts; bilateral mirroredFrom when symmetric).",
+    layoutStyle: "LayoutGPT-inspired few-shot numeric layout (concrete relativeSize/relativePosition; recognitionCriticalParts; bilateral mirroredFrom when symmetric; PartNeXt parentId hierarchies).",
     contract: geometryPlanContract,
   });
 }
