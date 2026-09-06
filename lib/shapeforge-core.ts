@@ -431,6 +431,23 @@ function genericRecipe(prompt: string): Recipe {
   };
 }
 
+
+function horseshoeRecipe(): Recipe {
+  return {
+    name: "Horseshoe",
+    specs: [
+      cylinder("leftArm", "Left Arm", undefined, "structure", "Forms the left upright of the open U / horseshoe.", [-52, 14, 0], [18, 108, 18], [-125, 35, 0], "#8a96a0", "y", { relatedKeys: ["leftCurve", "rightArm", "toeArc"] }),
+      cylinder("rightArm", "Right Arm", undefined, "structure", "Forms the right upright of the open U / horseshoe.", [52, 14, 0], [18, 108, 18], [125, 35, 0], "#8a96a0", "y", { relatedKeys: ["rightCurve", "leftArm", "toeArc"] }),
+      cylinder("leftCurve", "Left Toe Curve", "leftArm", "structure", "Bends the left arm into the curved toe.", [-38, -48, 0], [42, 18, 18], [-95, -105, 15], "#7e8b96", "x", { rotation: [0, 0, 28], relatedKeys: ["leftArm", "toeArc"] }),
+      cylinder("rightCurve", "Right Toe Curve", "rightArm", "structure", "Bends the right arm into the curved toe.", [38, -48, 0], [42, 18, 18], [95, -105, 15], "#7e8b96", "x", { rotation: [0, 0, -28], relatedKeys: ["rightArm", "toeArc"] }),
+      cylinder("toeArc", "Curved Toe Arc", undefined, "structure", "Connects both arms across the closed end of the U.", [0, -64, 0], [64, 18, 18], [0, -140, 0], "#93a0aa", "x", { relatedKeys: ["leftCurve", "rightCurve", "leftArm", "rightArm"] }),
+      cylinder("leftTip", "Left Open Tip", "leftArm", "surface", "Marks the open end of the left arm.", [-52, 72, 0], [20, 14, 20], [-130, 125, 0], "#c5ced4", "y", { relatedKeys: ["leftArm"], detail: true }),
+      cylinder("rightTip", "Right Open Tip", "rightArm", "surface", "Marks the open end of the right arm.", [52, 72, 0], [20, 14, 20], [130, 125, 0], "#c5ced4", "y", { relatedKeys: ["rightArm"], detail: true }),
+      box("nailBand", "Nail Hole Band", "toeArc", "fastener", "Suggests the horseshoe nail-hole strip along the toe.", [0, -64, 12], [48, 8, 6], [0, -150, 55], "#d4a35a", { relatedKeys: ["toeArc"], detail: true }),
+    ],
+  };
+}
+
 function matchRecipe(prompt: string): Recipe | null {
   const value = prompt.toLowerCase();
   if (/\b(chevelle|mustang|camaro|charger|corvette|car|automobile|coupe|sedan|roadster)\b/.test(value)) return vehicleRecipe(prompt);
@@ -439,6 +456,7 @@ function matchRecipe(prompt: string): Recipe | null {
   if (/\btable\b|\bdesk\b/.test(value)) return tableRecipe();
   if (/\bwheel\b/.test(value)) return wheelRecipe();
   if (/\bchair\b|\bstool\b/.test(value)) return chairRecipe();
+  if (/\bhorse\s*shoe\b|\bu[\s-]?bolt\b|\bu[\s-]?magnet\b|\bhorseshoe\b/.test(value)) return horseshoeRecipe();
   if (/\blamp\b|desk\s+light/.test(value)) return lampRecipe();
   if (/\bbicycle\b|\bbike\b/.test(value)) return bicycleRecipe();
   if (/\btelevision\b|\btv\b/.test(value)) return tvRecipe("tv");

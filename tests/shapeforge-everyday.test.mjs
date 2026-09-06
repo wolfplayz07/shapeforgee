@@ -269,3 +269,40 @@ test("semantic planner generalizes across unseen component, wearable, tool, appl
   assert.ok(hoopExtents[2] > hoopExtents[1] * 8);
   assertValid(hoop);
 });
+
+test("builds an open-loop horseshoe U with bilateral arms and a connecting toe", () => {
+  const project = createForgeProject("horseshoe", { detail: "detailed" });
+  const byName = Object.fromEntries(project.parts.map((part) => [part.name, part]));
+
+  assert.equal(project.name, "Horseshoe");
+  assert.equal(project.source, "recovered-recipe");
+  assert.ok(byName["Left Arm"]);
+  assert.ok(byName["Right Arm"]);
+  assert.ok(byName["Curved Toe Arc"]);
+  assert.ok(byName["Left Toe Curve"]);
+  assert.ok(byName["Right Toe Curve"]);
+
+  assert.ok(byName["Left Arm"].position[0] < 0, "left arm should sit on -X");
+  assert.ok(byName["Right Arm"].position[0] > 0, "right arm should sit on +X");
+  assert.ok(
+    byName["Curved Toe Arc"].position[1] < byName["Left Arm"].position[1],
+    "toe should sit below the arms to close the U",
+  );
+  assert.ok(
+    byName["Left Arm"].position[1] > byName["Curved Toe Arc"].position[1] &&
+      byName["Right Arm"].position[1] > byName["Curved Toe Arc"].position[1],
+    "arms should rise above the toe opening the U upward",
+  );
+
+  const spanX = extents(project)[0];
+  const spanY = extents(project)[1];
+  assert.ok(spanX > 80, `expected wide U, got spanX=${spanX}`);
+  assert.ok(spanY > 80, `expected tall U, got spanY=${spanY}`);
+  assert.ok(!namesOf(project).some((name) => /Main Frame|Outer Body|Drive Core/.test(name)));
+  assertValid(project);
+
+  const ubolt = createForgeProject("U-bolt", { detail: "detailed" });
+  assert.equal(ubolt.source, "recovered-recipe");
+  assert.equal(ubolt.name, "Horseshoe");
+  assertValid(ubolt);
+});
