@@ -65,14 +65,26 @@ async function handleForgeGenerate(request: Request, env: Env) {
     configuredModel: env.SHAPEFORGE_AI_MODEL || null,
   });
   const project = await createForgeProjectWithPlanner(prompt, env, { detail, scale });
+  const genericMainFrameSignature = hasGenericMainFrameSignature(project);
   logForge("forge.result", {
     projectSource: project.source,
     plannerSource: project.planner?.source ?? null,
     plannerModel: project.planner?.model ?? null,
     plannerWarnings: project.planner?.warnings ?? [],
     partCount: project.parts.length,
-    genericMainFrameSignature: hasGenericMainFrameSignature(project),
+    genericMainFrameSignature,
   });
+  // Fail closed: never return the legacy five-part generic assembly as a successful Generate.
+  if (genericMainFrameSignature) {
+    return apiJson({
+      error: "Rejected legacy generic Main Frame assembly. Workers AI / semantic planner must produce a real object plan.",
+      projectSource: project.source,
+      plannerSource: project.planner?.source ?? null,
+      plannerModel: project.planner?.model ?? null,
+      plannerWarnings: project.planner?.warnings ?? [],
+      genericMainFrameSignature: true,
+    }, 422);
+  }
   return apiJson({ project });
 }
 
