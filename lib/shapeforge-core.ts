@@ -478,6 +478,19 @@ function eyeglassesRecipe(): Recipe {
   };
 }
 
+function hammerRecipe(): Recipe {
+  return {
+    name: "Hammer",
+    specs: [
+      box("handle", "Handle", undefined, "grip", "Gives the user leverage.", [0, -20, 0], [22, 140, 18], [0, -40, 0], "#8b5a2b", { relatedKeys: ["neck", "head"] }),
+      box("neck", "Neck", "handle", "structure", "Joins handle to head.", [0, 55, 0], [18, 28, 18], [0, 60, 20], "#9aa5ad", { relatedKeys: ["head"] }),
+      box("head", "Striking Face", "neck", "output", "Delivers the strike.", [28, 70, 0], [48, 32, 28], [90, 95, 0], "#c0c8ce", { relatedKeys: ["claw"] }),
+      box("claw", "Claw", "head", "output", "Pulls nails.", [-32, 70, 0], [40, 18, 18], [-85, 95, 0], "#a8b2bb", { relatedKeys: ["head"], detail: true }),
+      box("pommel", "Pommel Cap", "handle", "surface", "Ends the handle.", [0, -92, 0], [24, 14, 20], [0, -120, 0], "#6b4a2f", { relatedKeys: ["handle"], detail: true }),
+    ],
+  };
+}
+
 function horseshoeRecipe(): Recipe {
   return {
     name: "Horseshoe",
@@ -505,6 +518,7 @@ function matchRecipe(prompt: string): Recipe | null {
   if (/\bwheel\b/.test(value)) return wheelRecipe();
   if (/\bchair\b|\bstool\b/.test(value)) return chairRecipe();
   if (/\b(eye\s*-?\s*glasses|eyeglasses|spectacles|sunglasses|glasses|eyewear)\b/.test(value)) return eyeglassesRecipe();
+  if (/\bhammer\b|\bmallet\b/.test(value)) return hammerRecipe();
   if (/\bhorse\s*shoe\b|\bu[\s-]?bolt\b|\bu[\s-]?magnet\b|\bhorseshoe\b/.test(value)) return horseshoeRecipe();
   if (/\blamp\b|desk\s+light/.test(value)) return lampRecipe();
   if (/\bbicycle\b|\bbike\b/.test(value)) return bicycleRecipe();

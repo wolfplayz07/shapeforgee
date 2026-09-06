@@ -387,4 +387,12 @@ test("eyeglasses recovered recipe reads as wearable eyewear", () => {
     assertValid(project);
   }
 });
-
+test("hammer recovered recipe builds handle head claw", () => {
+  const project = createForgeProject("hammer", { detail: "detailed" });
+  assert.equal(project.source, "recovered-recipe");
+  assert.equal(project.name, "Hammer");
+  assert.ok(namesOf(project).includes("Handle"));
+  assert.ok(namesOf(project).includes("Striking Face"));
+  assert.ok(namesOf(project).includes("Claw"));
+  assertValid(project);
+});
