@@ -478,9 +478,10 @@ function matchRecipe(prompt: string): Recipe | null {
   if (/\b(chevelle|mustang|camaro|charger|corvette|car|automobile|coupe|sedan|roadster)\b/.test(value)) return vehicleRecipe(prompt);
   if (/a\s*-?\s*72|bowling\s+machine/.test(value)) return a72Recipe();
   if (/desk\s+fan|\bfan\b/.test(value)) return fanRecipe();
+  // Office/desk chairs before table's \bdesk\b so "desk chair" / "office desk chair" stay officeChair.
+  if (/\bdesk\s+chair\b|\b(office|task|swivel|desk|computer|rolling|wheeled|ergonomic)(\s+\w+)?\s+chair\b|\bswivel\s+seat\b/.test(value)) return officeChairRecipe();
   if (/\btable\b|\bdesk\b/.test(value)) return tableRecipe();
   if (/\bwheel\b/.test(value)) return wheelRecipe();
-  if (/\b(office|task|swivel|desk|computer|rolling|wheeled|ergonomic)\s+chair\b|\bswivel\s+seat\b/.test(value)) return officeChairRecipe();
   if (/\bchair\b|\bstool\b/.test(value)) return chairRecipe();
   if (/\bhorse\s*shoe\b|\bu[\s-]?bolt\b|\bu[\s-]?magnet\b|\bhorseshoe\b/.test(value)) return horseshoeRecipe();
   if (/\blamp\b|desk\s+light/.test(value)) return lampRecipe();
