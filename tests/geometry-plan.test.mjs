@@ -408,7 +408,6 @@ test("Workers AI planner creates distinct physical projects and preserves constr
     "desk lamp",
     "telescope",
     "bicycle derailleur",
-    "horseshoe",
     "washing machine drain pump",
     "wall mounted hair dryer",
     "stapler",
@@ -483,6 +482,25 @@ test("Workers AI planner falls back to existing semantic planner when model outp
   assert.equal(project.planner.source, "semantic-fallback");
   assert.ok(project.planner.warnings.some((warning) => /invalid/i.test(warning)));
   assert.ok(names(project).includes("Left Lens"));
+  assertValid(project);
+});
+
+
+test("high-confidence horseshoe open-loop U template runs before Workers AI", async () => {
+  const ai = mockAI();
+  const project = await createForgeProjectWithPlanner("horseshoe", { AI: ai }, { detail: "detailed" });
+  assert.equal(project.source, "recovered-recipe");
+  assert.equal(project.planner.source, "recovered-recipe");
+  assert.equal(ai.calls.length, 0);
+
+  const byName = Object.fromEntries(project.parts.map((part) => [part.name, part]));
+  assert.ok(byName["Left Arm"]);
+  assert.ok(byName["Right Arm"]);
+  assert.ok(byName["Curved Toe Arc"]);
+  assert.ok(byName["Left Arm"].position[0] < 0);
+  assert.ok(byName["Right Arm"].position[0] > 0);
+  assert.ok(byName["Curved Toe Arc"].position[1] < Math.min(byName["Left Arm"].position[1], byName["Right Arm"].position[1]));
+  assert.ok(!names(project).some((name) => /Main Frame|Drive Core|Output Module/.test(name)));
   assertValid(project);
 });
 
