@@ -447,6 +447,104 @@ function hasHierarchyCycle(parts: GeometryPlanPart[]) {
   });
 }
 
+
+function reflectVec3AcrossAxis(value: Vec3, axis: 0 | 1 | 2): Vec3 {
+  const next: Vec3 = [value[0], value[1], value[2]];
+  next[axis] = -next[axis];
+  return next;
+}
+
+function reflectRotationAcrossAxis(value: Vec3, axis: 0 | 1 | 2): Vec3 {
+  if (axis === 0) return [value[0], -value[1], -value[2]];
+  if (axis === 1) return [-value[0], value[1], -value[2]];
+  return [-value[0], -value[1], value[2]];
+}
+
+function oppositeSideName(name: string) {
+  if (/\bleft\b/i.test(name)) return name.replace(/\bleft\b/gi, (match) => (match[0] === "L" ? "Right" : "right"));
+  if (/\bright\b/i.test(name)) return name.replace(/\bright\b/gi, (match) => (match[0] === "R" ? "Left" : "left"));
+  return null;
+}
+
+function oppositeSideId(id: string) {
+  if (/left/i.test(id)) return id.replace(/left/gi, (match) => (match[0] === "L" ? "Right" : "right"));
+  if (/right/i.test(id)) return id.replace(/right/gi, (match) => (match[0] === "R" ? "Left" : "left"));
+  return null;
+}
+
+/** Enforce / complete bilateral mirrors (mirroredFrom + Left/Right pairs). Mirror axis is X. */
+export function sanitizeBilateralMirrors(
+  parts: GeometryPlanPart[],
+  symmetry: SymmetryKind,
+  warnings: string[],
+): SymmetryKind {
+  const byId = new Map(parts.map((part) => [part.id, part]));
+  const byName = new Map(parts.map((part) => [part.name.toLowerCase(), part]));
+  const axis: 0 | 1 | 2 = 0;
+
+  const enforcePair = (part: GeometryPlanPart, source: GeometryPlanPart) => {
+    if (source.mirroredFrom !== part.id) source.mirroredFrom = part.id;
+    part.mirroredFrom = source.id;
+
+    let repaired = false;
+    if (part.relativeSize.some((value, index) => Math.abs(value - source.relativeSize[index]) > 1e-3)) {
+      part.relativeSize = [source.relativeSize[0], source.relativeSize[1], source.relativeSize[2]];
+      repaired = true;
+    }
+    const expectedPosition = reflectVec3AcrossAxis(source.relativePosition, axis);
+    if (part.relativePosition.some((value, index) => Math.abs(value - expectedPosition[index]) > 0.05)) {
+      part.relativePosition = expectedPosition;
+      repaired = true;
+    }
+    const expectedRotation = reflectRotationAcrossAxis(source.rotation, axis);
+    if (part.rotation.some((value, index) => Math.abs(value - expectedRotation[index]) > 0.5)) {
+      part.rotation = expectedRotation;
+      repaired = true;
+    }
+    if (part.primitive !== source.primitive) {
+      part.primitive = source.primitive;
+      part.axis = source.axis;
+      repaired = true;
+    }
+    if (repaired) warnings.push(`Repaired bilateral mirror ${part.id} from ${source.id} across X.`);
+  };
+
+  for (const part of parts) {
+    if (!part.mirroredFrom) continue;
+    const source = byId.get(part.mirroredFrom);
+    if (!source || source.id === part.id) {
+      delete part.mirroredFrom;
+      continue;
+    }
+    enforcePair(part, source);
+  }
+
+  if (symmetry === "bilateral") {
+    for (const part of parts) {
+      if (part.mirroredFrom) continue;
+      const oppositeName = oppositeSideName(part.name);
+      const oppositeId = oppositeSideId(part.id);
+      const mate =
+        (oppositeName ? byName.get(oppositeName.toLowerCase()) : undefined)
+        ?? (oppositeId ? byId.get(oppositeId) : undefined);
+      if (!mate || mate.id === part.id) continue;
+      if (part.relativePosition[axis] > mate.relativePosition[axis]) continue;
+      enforcePair(mate, part);
+      warnings.push(`Linked bilateral pair ${part.id} ↔ ${mate.id}.`);
+    }
+
+    const hasMirrorLink = parts.some((part) => Boolean(part.mirroredFrom));
+    const xs = parts.map((part) => part.relativePosition[0]);
+    const hasBothSides = xs.some((value) => value < -0.05) && xs.some((value) => value > 0.05);
+    if (!hasMirrorLink && !hasBothSides) {
+      warnings.push("Bilateral silhouette had no left/right span or mirrored pairs; downgraded symmetry to none.");
+      return "none";
+    }
+  }
+
+  return symmetry;
+}
+
 export function validateAndSanitizeGeometryPlan(raw: unknown, prompt: string): PlanValidationResult {
   const warnings: string[] = [];
   if (!isObject(raw)) return { ok: false, warnings: ["Planner output was not an object."] };
@@ -534,6 +632,8 @@ export function validateAndSanitizeGeometryPlan(raw: unknown, prompt: string): P
     if (part.mirroredFrom && !seen.has(part.mirroredFrom)) delete part.mirroredFrom;
   }
 
+  const resolvedSymmetry = sanitizeBilateralMirrors(parts, symmetry, warnings);
+
   if (hasHierarchyCycle(parts)) return { ok: false, warnings: [...warnings, "Planner hierarchy contains a cycle."] };
   const spatialCollapse = hasCollapsedSpatialLayout(parts);
   if (spatialCollapse.collapsed) {
@@ -570,7 +670,7 @@ export function validateAndSanitizeGeometryPlan(raw: unknown, prompt: string): P
         proportions,
         orientation: asString(rawSilhouette.orientation, "upright or operational orientation"),
         dominantAxis,
-        symmetry,
+        symmetry: resolvedSymmetry,
       },
       exclusions,
       recognitionCriticalParts: asStringArray(raw.recognitionCriticalParts),
