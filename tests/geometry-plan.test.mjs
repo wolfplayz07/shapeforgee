@@ -525,13 +525,17 @@ test("Workers AI planner includes LayoutGPT-style few-shot exemplars before the 
   await createForgeProjectWithPlanner("wrench", { AI: ai }, { detail: "detailed" });
   assert.equal(ai.calls.length, 1);
   const messages = ai.calls[0].input.messages;
-  assert.ok(messages.length >= 5, `expected system + few-shots + user, got ${messages.length}`);
+  assert.ok(messages.length >= 7, `expected system + few-shots + user, got ${messages.length}`);
   assert.equal(messages[0].role, "system");
   assert.match(messages[0].content, /LayoutGPT/i);
+  assert.match(messages[0].content, /PartNeXt/i);
   assert.equal(messages[1].role, "user");
   assert.equal(messages[2].role, "assistant");
   assert.equal(messages[3].role, "user");
   assert.equal(messages[4].role, "assistant");
+  assert.equal(messages[5].role, "user");
+  assert.equal(messages[6].role, "assistant");
+  assert.match(messages[6].content, /PartNeXt|flashlight|Body Tube/i);
   const last = messages[messages.length - 1];
   assert.equal(last.role, "user");
   const payload = JSON.parse(last.content);
