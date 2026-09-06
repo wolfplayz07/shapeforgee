@@ -388,3 +388,18 @@ test("eyeglasses recovered recipe reads as wearable eyewear", () => {
   }
 });
 
+
+  const hairDryer = createForgeProject("portable hair dryer with handle", { detail: "detailed" });
+  assert.ok(!namesOf(hairDryer).some((name) => /Washer Cabinet|Dryer Cabinet|Wash Drum|Dryer Drum/.test(name)));
+  assertValid(hairDryer);
+});
+
+test("stapler recovered recipe builds anvil magazine hinge layout", () => {
+  const project = createForgeProject("stapler", { detail: "detailed" });
+  assert.equal(project.source, "recovered-recipe");
+  assert.equal(project.name, "Stapler");
+  assert.ok(namesOf(project).includes("Base Anvil"));
+  assert.ok(namesOf(project).includes("Staple Magazine"));
+  assert.ok(namesOf(project).includes("Rear Hinge"));
+  assertValid(project);
+});
