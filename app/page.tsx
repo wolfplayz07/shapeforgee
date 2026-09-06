@@ -411,6 +411,7 @@ export default function Home() {
   const [redoStack, setRedoStack] = useState<ForgeProject[]>([]);
   const [resetSignal, setResetSignal] = useState(0);
   const [fitSignal, setFitSignal] = useState(0);
+  const [fitSelectionSignal, setFitSelectionSignal] = useState(0);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [draftOverrides, setDraftOverrides] = useState<Record<string, InspectorDraft>>({});
   const [draftRevision, setDraftRevision] = useState(0);
@@ -759,7 +760,8 @@ export default function Home() {
           <div className="viewport-toolbar">
             <div className="toolbar-group">
               <Button variant="outline" size="sm" onClick={() => { setResetSignal((value) => value + 1); setStatus("View reset."); }}><RotateCcw /> Reset</Button>
-              <Button variant="outline" size="sm" onClick={() => { setFitSignal((value) => value + 1); setStatus("Assembly fitted to the viewport."); }}><Maximize2 /> Fit</Button>
+              <Button variant="outline" size="sm" onClick={() => { setFitSignal((value) => value + 1); setStatus("Assembly fitted to AABB."); }}><Maximize2 /> Fit</Button>
+              <Button variant="outline" size="sm" disabled={!selectedId} onClick={() => { setFitSelectionSignal((value) => value + 1); setStatus("Selection fitted to AABB."); }}><Focus /> Fit part</Button>
             </div>
             <div className="toolbar-group toolbar-view-toggles">
               <Button variant={showLabels ? "secondary" : "outline"} size="sm" onClick={() => setShowLabels((value) => !value)}><Eye /> Labels</Button>
@@ -776,9 +778,10 @@ export default function Home() {
               showRelations={showRelations}
               resetSignal={resetSignal}
               fitSignal={fitSignal}
+              fitSelectionSignal={fitSelectionSignal}
               onSelect={setSelectedId}
             />
-            <div className="stage-hint"><Move3d /> Drag to orbit · pinch or wheel to zoom · tap a part</div>
+            <div className="stage-hint"><Move3d /> Drag to orbit · pinch or wheel to zoom · tap a part · double-click to fit</div>
             <div className="stage-readout">
               <span>{project.parts.filter((part) => !part.hidden).length} visible</span>
               <span className="readout-divider" />
