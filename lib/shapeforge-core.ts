@@ -457,6 +457,22 @@ function genericRecipe(prompt: string): Recipe {
 }
 
 
+function eyeglassesRecipe(): Recipe {
+  return {
+    name: "Eyeglasses",
+    specs: [
+      cylinder("leftLens", "Left Lens", undefined, "optical", "Provides the left optical surface.", [-43, 5, 0], [52, 34, 5], [-96, 18, 0], "#a8c7d6", "z", { relatedKeys: ["bridge", "leftRim"] }),
+      cylinder("rightLens", "Right Lens", undefined, "optical", "Provides the right optical surface.", [43, 5, 0], [52, 34, 5], [96, 18, 0], "#a8c7d6", "z", { relatedKeys: ["bridge", "rightRim"] }),
+      cylinder("leftRim", "Left Rim", "leftLens", "structure", "Frames and protects the left lens.", [-43, 5, -1], [62, 42, 6], [-118, 42, -15], "#30353a", "z", { relatedKeys: ["leftLens", "bridge"] }),
+      cylinder("rightRim", "Right Rim", "rightLens", "structure", "Frames and protects the right lens.", [43, 5, -1], [62, 42, 6], [118, 42, -15], "#30353a", "z", { relatedKeys: ["rightLens", "bridge"] }),
+      box("bridge", "Nose Bridge", undefined, "support", "Joins the two lens rims.", [0, 5, 0], [26, 9, 8], [0, 56, 0], "#30353a", { relatedKeys: ["leftRim", "rightRim", "nosePads"] }),
+      box("leftTemple", "Left Temple Arm", "leftRim", "support", "Holds the frame on the left ear.", [-82, 3, -43], [78, 7, 8], [-175, 4, -86], "#30353a", { rotation: [0, -18, 0], relatedKeys: ["leftRim"] }),
+      box("rightTemple", "Right Temple Arm", "rightRim", "support", "Holds the frame on the right ear.", [82, 3, -43], [78, 7, 8], [175, 4, -86], "#30353a", { rotation: [0, 18, 0], relatedKeys: ["rightRim"] }),
+      box("nosePads", "Paired Nose Pads", "bridge", "support", "Rest the glasses on the nose.", [0, -17, 6], [22, 12, 6], [0, -62, 42], "#d6dde1", { relatedKeys: ["bridge"], detail: true }),
+    ],
+  };
+}
+
 function horseshoeRecipe(): Recipe {
   return {
     name: "Horseshoe",
@@ -483,6 +499,7 @@ function matchRecipe(prompt: string): Recipe | null {
   if (/\btable\b|\bdesk\b/.test(value)) return tableRecipe();
   if (/\bwheel\b/.test(value)) return wheelRecipe();
   if (/\bchair\b|\bstool\b/.test(value)) return chairRecipe();
+  if (/\b(eye\s*-?\s*glasses|eyeglasses|spectacles|sunglasses)\b/.test(value)) return eyeglassesRecipe();
   if (/\bhorse\s*shoe\b|\bu[\s-]?bolt\b|\bu[\s-]?magnet\b|\bhorseshoe\b/.test(value)) return horseshoeRecipe();
   if (/\blamp\b|desk\s+light/.test(value)) return lampRecipe();
   if (/\bbicycle\b|\bbike\b/.test(value)) return bicycleRecipe();
