@@ -501,6 +501,7 @@ type SemanticFamily =
   | "printer"
   | "pump"
   | "blender"
+  | "laundryAppliance"
   | "pairedWearable"
   | "elongatedHandTool"
   | "mechanicalSubassembly"
@@ -524,6 +525,10 @@ function semanticPlan(prompt: string): SemanticPlan {
   if (/\b(desktop\s*)?(printer|scanner\s*printer|inkjet|laser\s*printer)\b/.test(value)) return { family: "printer", name: title, subject: "printer" };
   if (/\b(blender|food\s*processor|smoothie\s*maker)\b/.test(value)) return { family: "blender", name: title, subject: "blender" };
   if (/\b(bicycle|bike)?\s*(pump|floor\s*pump|tire\s*pump)|drain\s+pump|water\s+pump|fuel\s+pump\b/.test(value)) return { family: "pump", name: title, subject: "pump" };
+  if (/\b(washing\s*machine|washer(?!\s*fluid)|clothes\s*dryer|laundry\s*(machine|dryer|washer)|tumble\s*dryer)\b/.test(value) && !/\bhair\s*dryer\b/.test(value)) {
+    const subject = /\bdryer\b/.test(value) ? "dryer" : "washing machine";
+    return { family: "laundryAppliance", name: title, subject };
+  }
   if (/\b(transmission|gearbox|differential|clutch|reducer|drive\s+unit|motor\s+assembly|pump\s+assembly|valve\s+body)\b/.test(value)) return { family: "mechanicalSubassembly", name: title, subject: "subassembly" };
   if (/\b(eye\s*glasses|eyeglasses|spectacles|sunglasses|goggles|glasses)\b/.test(value)) return { family: "pairedWearable", name: title, subject: "eyewear" };
   if (/\b(wrench|spanner|screwdriver|ratchet|chisel|file|scraper|pry\s*bar|hand\s+tool)\b/.test(value)) return { family: "elongatedHandTool", name: title, subject: "hand tool" };
@@ -648,6 +653,30 @@ function pumpSpecs(prompt: string): EverydaySpec[] {
   ];
 }
 
+
+function laundryApplianceSpecs(prompt: string): EverydaySpec[] {
+  const value = prompt.toLowerCase();
+  const isDryer = /\bdryer\b/.test(value);
+  const body = colorFromPrompt(prompt, isDryer ? "#c5ccd1" : "#d7dce0");
+  const dark = "#2f363b";
+  const accent = "#3b7894";
+  const cabinetName = isDryer ? "Dryer Cabinet" : "Washer Cabinet";
+  const drumName = isDryer ? "Dryer Drum" : "Wash Drum";
+  const doorName = isDryer ? "Front Door Glass" : "Door With Glass Port";
+  return [
+    box("cabinet", cabinetName, undefined, "housing", addSpatial("Forms the upright laundry appliance enclosure.", "surrounding the drum from floor feet up to the control console"), [0, 0, 0], [128, 148, 110], [0, 0, -120], body, { relatedKeys: ["drum", "door", "controlConsole", "topLid"] }),
+    cylinder("drum", drumName, "cabinet", "motion", addSpatial("Holds and tumbles laundry inside the cabinet.", "centered inside the cabinet behind the front door"), [0, -6, 8], [88, 88, 72], [0, -10, 55], "#8a96a0", "z", { relatedKeys: ["door", "cabinet"] }),
+    cylinder("door", doorName, "cabinet", "housing", addSpatial("Closes the front opening over the drum.", "on the front face of the cabinet concentric with the drum"), [0, -6, 58], [78, 78, 10], [0, -8, 145], "#9dc2d1", "z", { relatedKeys: ["drum", "hinge"] }),
+    box("controlConsole", "Control Console", "cabinet", "control", addSpatial("Holds cycle selectors and the start controls.", "along the upper rear top of the cabinet"), [0, 72, -28], [118, 18, 36], [0, 148, -55], dark, { relatedKeys: ["knob", "cabinet"] }),
+    box("topLid", isDryer ? "Top Access Panel" : "Top Lid Panel", "cabinet", "housing", addSpatial("Caps the appliance above the drum cavity.", "on top of the cabinet in front of the control console"), [0, 78, 18], [120, 10, 72], [0, 158, 35], body, { relatedKeys: ["cabinet"] }),
+    box("detergentDrawer", "Detergent Drawer", "cabinet", "input", addSpatial("Accepts detergent or softener.", "sliding from the upper left front of the cabinet"), [-42, 58, 52], [36, 14, 18], [-95, 118, 110], accent, { relatedKeys: ["cabinet"], detail: true }),
+    cylinder("knob", "Cycle Selector Knob", "controlConsole", "control", addSpatial("Selects wash or dry cycles.", "on the front of the control console"), [38, 72, -8], [16, 10, 16], [78, 150, -20], accent, "z", { relatedKeys: ["controlConsole"], detail: true }),
+    box("footL", "Left Front Foot", "cabinet", "support", addSpatial("Levels the appliance on the floor.", "under the lower left front corner"), [-48, -78, 42], [16, 10, 16], [-100, -155, 85], dark, { relatedKeys: ["cabinet"], detail: true }),
+    box("footR", "Right Front Foot", "cabinet", "support", addSpatial("Levels the appliance on the floor.", "under the lower right front corner"), [48, -78, 42], [16, 10, 16], [100, -155, 85], dark, { relatedKeys: ["cabinet"], detail: true }),
+    cylinder("hinge", "Door Hinge", "door", "motion", addSpatial("Swings the front door open.", "along the left edge of the door"), [-42, -6, 58], [10, 36, 10], [-95, -8, 148], dark, "y", { relatedKeys: ["door"], detail: true }),
+  ];
+}
+
 function blenderSpecs(prompt: string): EverydaySpec[] {
   const base = colorFromPrompt(prompt, "#656f77");
   return [
@@ -677,6 +706,8 @@ function inferGeneralUnknownSpecs(prompt: string): EverydaySpec[] {
       return pumpSpecs(prompt);
     case "blender":
       return blenderSpecs(prompt);
+    case "laundryAppliance":
+      return laundryApplianceSpecs(prompt);
     case "pairedWearable":
       return eyewearSpecs(prompt);
     case "elongatedHandTool":
@@ -717,6 +748,7 @@ function coreRecipeMatchesPrompt(project: ForgeProject, prompt: string) {
   if (name === "table" && /\b(lamp|light|sconce|lantern)\b/.test(value)) return false;
   if (/vehicle|car|automobile|coupe|sedan|roadster/.test(name) && /\b(transmission|gearbox|differential|clutch)\b/.test(value)) return false;
   if (/\bbicycle\b|\bbike\b/.test(name) && /\b(derailleur|brake|caliper|fork|crankset|cassette|chainring|shifter|hub|bottom bracket)\b/.test(value)) return false;
+  if (name === "chair" && /\b(office|task|swivel|desk|computer|rolling|wheeled|ergonomic)\s+chair\b/.test(value)) return false;
   return true;
 }
 

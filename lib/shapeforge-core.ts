@@ -191,6 +191,31 @@ function wheelRecipe(): Recipe {
   };
 }
 
+
+function officeChairRecipe(): Recipe {
+  return {
+    name: "Office Chair",
+    specs: [
+      box("seat", "Seat Pan", undefined, "surface", "Supports the occupant on a rolling office chair.", [0, 18, 0], [92, 14, 88], [0, 85, 0], "#4a6f8c", { relatedKeys: ["back", "column", "armL", "armR"] }),
+      box("back", "Backrest", "seat", "surface", "Supports the occupant's back above the seat pan.", [0, 78, 38], [88, 108, 12], [0, 150, 78], "#5a82a0", { relatedKeys: ["seat"] }),
+      cylinder("column", "Gas Column", "seat", "motion", "Adjustable pedestal between the seat and star base.", [0, -28, 0], [18, 70, 18], [0, -55, 0], "#8a96a0", "y", { relatedKeys: ["seat", "hub"] }),
+      cylinder("hub", "Star Base Hub", "column", "support", "Center of the five-star caster base.", [0, -68, 0], [36, 14, 36], [0, -125, 0], "#596877", "y", { relatedKeys: ["column", "armA", "armB", "armC", "armD", "armE"] }),
+      box("armA", "Base Arm Front", "hub", "support", "Front spoke of the star base.", [0, -68, 42], [14, 10, 64], [0, -125, 95], "#344b60", { relatedKeys: ["hub", "casterA"] }),
+      box("armB", "Base Arm Front Right", "hub", "support", "Front-right spoke of the star base.", [40, -68, 13], [64, 10, 14], [92, -125, 30], "#344b60", { relatedKeys: ["hub", "casterB"] }),
+      box("armC", "Base Arm Rear Right", "hub", "support", "Rear-right spoke of the star base.", [40, -68, -13], [64, 10, 14], [92, -125, -30], "#344b60", { relatedKeys: ["hub", "casterC"] }),
+      box("armD", "Base Arm Rear Left", "hub", "support", "Rear-left spoke of the star base.", [-40, -68, -13], [64, 10, 14], [-92, -125, -30], "#344b60", { relatedKeys: ["hub", "casterD"] }),
+      box("armE", "Base Arm Front Left", "hub", "support", "Front-left spoke of the star base.", [-40, -68, 13], [64, 10, 14], [-92, -125, 30], "#344b60", { relatedKeys: ["hub", "casterE"] }),
+      cylinder("casterA", "Front Caster", "armA", "motion", "Rolling caster under the front base arm.", [0, -82, 68], [18, 14, 18], [0, -155, 125], "#2c3339", "y", { relatedKeys: ["armA"], detail: true }),
+      cylinder("casterB", "Front Right Caster", "armB", "motion", "Rolling caster under the front-right base arm.", [62, -82, 20], [18, 14, 18], [118, -155, 42], "#2c3339", "y", { relatedKeys: ["armB"], detail: true }),
+      cylinder("casterC", "Rear Right Caster", "armC", "motion", "Rolling caster under the rear-right base arm.", [62, -82, -20], [18, 14, 18], [118, -155, -42], "#2c3339", "y", { relatedKeys: ["armC"], detail: true }),
+      cylinder("casterD", "Rear Left Caster", "armD", "motion", "Rolling caster under the rear-left base arm.", [-62, -82, -20], [18, 14, 18], [-118, -155, -42], "#2c3339", "y", { relatedKeys: ["armD"], detail: true }),
+      cylinder("casterE", "Front Left Caster", "armE", "motion", "Rolling caster under the front-left base arm.", [-62, -82, 20], [18, 14, 18], [-118, -155, 42], "#2c3339", "y", { relatedKeys: ["armE"], detail: true }),
+      box("armL", "Left Armrest", "seat", "support", "Supports the left arm.", [-58, 38, 4], [14, 12, 70], [-110, 95, 12], "#3d5266", { relatedKeys: ["seat"], detail: true }),
+      box("armR", "Right Armrest", "seat", "support", "Supports the right arm.", [58, 38, 4], [14, 12, 70], [110, 95, 12], "#3d5266", { relatedKeys: ["seat"], detail: true }),
+    ],
+  };
+}
+
 function chairRecipe(): Recipe {
   return {
     name: "Chair",
@@ -455,6 +480,7 @@ function matchRecipe(prompt: string): Recipe | null {
   if (/desk\s+fan|\bfan\b/.test(value)) return fanRecipe();
   if (/\btable\b|\bdesk\b/.test(value)) return tableRecipe();
   if (/\bwheel\b/.test(value)) return wheelRecipe();
+  if (/\b(office|task|swivel|desk|computer|rolling|wheeled|ergonomic)\s+chair\b|\bswivel\s+seat\b/.test(value)) return officeChairRecipe();
   if (/\bchair\b|\bstool\b/.test(value)) return chairRecipe();
   if (/\bhorse\s*shoe\b|\bu[\s-]?bolt\b|\bu[\s-]?magnet\b|\bhorseshoe\b/.test(value)) return horseshoeRecipe();
   if (/\blamp\b|desk\s+light/.test(value)) return lampRecipe();
