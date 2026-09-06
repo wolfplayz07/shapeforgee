@@ -545,6 +545,138 @@ export function sanitizeBilateralMirrors(
   return symmetry;
 }
 
+
+function partMatchesCriticalToken(part: GeometryPlanPart, token: string) {
+  const needle = normalizeToken(token);
+  if (!needle) return false;
+  const haystack = normalizeToken(`${part.id} ${part.name} ${part.purpose}`);
+  return haystack.includes(needle);
+}
+
+/** Fail closed when recognitionCriticalParts are empty or none match any part. */
+export function assertRecognitionCriticalCoverage(
+  parts: GeometryPlanPart[],
+  critical: string[],
+  warnings: string[],
+): { ok: boolean; critical: string[] } {
+  let cleaned = critical.map((item) => item.trim()).filter(Boolean);
+  if (cleaned.length === 0) {
+    cleaned = parts.slice(0, 3).map((part) => part.name);
+    warnings.push("Seeded recognitionCriticalParts from leading part names.");
+    return { ok: true, critical: cleaned };
+  }
+  const uncovered = cleaned.filter((token) => !parts.some((part) => partMatchesCriticalToken(part, token)));
+  if (uncovered.length === cleaned.length) {
+    warnings.push(`recognitionCriticalParts unmatched: ${uncovered.slice(0, 6).join(", ")}.`);
+    return { ok: false, critical: cleaned };
+  }
+  if (uncovered.length) {
+    warnings.push(`Some recognitionCriticalParts unmatched: ${uncovered.slice(0, 6).join(", ")}.`);
+  }
+  return { ok: true, critical: cleaned };
+}
+
+type SpatialRelationKind = "above" | "below" | "inside" | "front" | "back" | "attached";
+
+function parseSpatialCue(text: string): { kind: SpatialRelationKind; target?: string } | null {
+  const value = text.toLowerCase();
+  const kind: SpatialRelationKind | null =
+    /\babove\b/.test(value) ? "above"
+    : /\bbelow\b/.test(value) ? "below"
+    : /\binside\b/.test(value) ? "inside"
+    : /\bfront\b/.test(value) ? "front"
+    : /\bback\b|\brear\b/.test(value) ? "back"
+    : /\battached\b|\bconnected\b|\bhinged\b/.test(value) ? "attached"
+    : null;
+  if (!kind) return null;
+  const targetMatch = value.match(/\b(?:above|below|inside|front|back|rear|attached to|connected to|hinged (?:at|to))\s+([a-z0-9 _-]+)/i);
+  const target = targetMatch?.[1]?.trim().replace(/\s+/g, " ");
+  return { kind, target: target || undefined };
+}
+
+function findRelatedPart(parts: GeometryPlanPart[], part: GeometryPlanPart, target?: string) {
+  if (target) {
+    const needle = normalizeToken(target);
+    const hit = parts.find((candidate) => candidate.id !== part.id && (
+      normalizeToken(candidate.id) === needle
+      || normalizeToken(candidate.name).includes(needle)
+      || needle.includes(normalizeToken(candidate.id))
+    ));
+    if (hit) return hit;
+  }
+  if (part.parentId) {
+    const parent = parts.find((candidate) => candidate.id === part.parentId);
+    if (parent) return parent;
+  }
+  return parts.find((candidate) => candidate.id !== part.id && (part.relatedIds ?? []).includes(candidate.id));
+}
+
+/** Holodeck-style soft constraint repair from spatialRelationships / relationship types. */
+export function applyHolodeckConstraintRepairs(
+  parts: GeometryPlanPart[],
+  relationships: Array<{ from: string; to: string; type: string; description?: string }>,
+  warnings: string[],
+) {
+  const byId = new Map(parts.map((part) => [part.id, part]));
+
+  const applyKind = (part: GeometryPlanPart, anchor: GeometryPlanPart, kind: SpatialRelationKind) => {
+    const gap = Math.max(0.08, (anchor.relativeSize[1] + part.relativeSize[1]) * 0.35);
+    const depthGap = Math.max(0.08, (anchor.relativeSize[2] + part.relativeSize[2]) * 0.35);
+    const next: Vec3 = [part.relativePosition[0], part.relativePosition[1], part.relativePosition[2]];
+    if (kind === "above") next[1] = anchor.relativePosition[1] + gap;
+    if (kind === "below") next[1] = anchor.relativePosition[1] - gap;
+    if (kind === "inside") {
+      next[0] = anchor.relativePosition[0];
+      next[1] = anchor.relativePosition[1];
+      next[2] = anchor.relativePosition[2];
+    }
+    if (kind === "front") next[2] = anchor.relativePosition[2] + depthGap;
+    if (kind === "back") next[2] = anchor.relativePosition[2] - depthGap;
+    if (kind === "attached") {
+      // Keep current offset unless nearly coincident with unrelated mush.
+      if (Math.hypot(next[0] - anchor.relativePosition[0], next[1] - anchor.relativePosition[1], next[2] - anchor.relativePosition[2]) < 0.02) {
+        next[1] = anchor.relativePosition[1] + gap * 0.5;
+      }
+    }
+    const moved = next.some((value, index) => Math.abs(value - part.relativePosition[index]) > 0.04);
+    if (moved) {
+      part.relativePosition = [
+        clamp(next[0], -1.5, 1.5),
+        clamp(next[1], -1.5, 1.5),
+        clamp(next[2], -1.5, 1.5),
+      ];
+      warnings.push(`Holodeck repair: moved ${part.id} ${kind} relative to ${anchor.id}.`);
+    }
+  };
+
+  for (const part of parts) {
+    for (const cueText of part.spatialRelationships ?? []) {
+      const cue = parseSpatialCue(cueText);
+      if (!cue) continue;
+      const anchor = findRelatedPart(parts, part, cue.target);
+      if (!anchor) {
+        warnings.push(`Holodeck constraint unmatched for ${part.id}: "${cueText}".`);
+        continue;
+      }
+      applyKind(part, anchor, cue.kind);
+    }
+  }
+
+  for (const rel of relationships) {
+    const from = byId.get(rel.from);
+    const to = byId.get(rel.to);
+    if (!from || !to) continue;
+    const cue = parseSpatialCue(`${rel.type} ${rel.description ?? ""}`)
+      ?? (/\babove\b/i.test(rel.type) ? { kind: "above" as const, target: undefined }
+        : /\bbelow\b/i.test(rel.type) ? { kind: "below" as const, target: undefined }
+        : /\binside\b/i.test(rel.type) ? { kind: "inside" as const, target: undefined }
+        : /\battached|hinged|connected\b/i.test(rel.type) ? { kind: "attached" as const, target: undefined }
+        : null);
+    if (!cue) continue;
+    applyKind(from, to, cue.kind);
+  }
+}
+
 export function validateAndSanitizeGeometryPlan(raw: unknown, prompt: string): PlanValidationResult {
   const warnings: string[] = [];
   if (!isObject(raw)) return { ok: false, warnings: ["Planner output was not an object."] };
@@ -655,6 +787,28 @@ export function validateAndSanitizeGeometryPlan(raw: unknown, prompt: string): P
     })).filter((item) => seen.has(item.from) && seen.has(item.to) && item.from !== item.to).slice(0, 64)
     : [];
 
+  const recognitionCriticalPartsRaw = asStringArray(raw.recognitionCriticalParts);
+  const criticalCoverage = assertRecognitionCriticalCoverage(parts, recognitionCriticalPartsRaw, warnings);
+  if (!criticalCoverage.ok) {
+    return {
+      ok: false,
+      warnings: [...warnings, "Planner recognizability failed: recognitionCriticalParts coverage invalid."],
+    };
+  }
+  const recognitionCriticalParts = criticalCoverage.critical;
+
+  applyHolodeckConstraintRepairs(parts, relationships, warnings);
+  const postConstraintCollapse = hasCollapsedSpatialLayout(parts);
+  if (postConstraintCollapse.collapsed) {
+    return {
+      ok: false,
+      warnings: [
+        ...warnings,
+        `Planner layout collapsed after Holodeck constraint repair: ${postConstraintCollapse.reason}.`,
+      ],
+    };
+  }
+
   return {
     ok: true,
     warnings,
@@ -673,7 +827,7 @@ export function validateAndSanitizeGeometryPlan(raw: unknown, prompt: string): P
         symmetry: resolvedSymmetry,
       },
       exclusions,
-      recognitionCriticalParts: asStringArray(raw.recognitionCriticalParts),
+      recognitionCriticalParts,
       parts,
       relationships,
       plannerNotes: asString(raw.plannerNotes),
