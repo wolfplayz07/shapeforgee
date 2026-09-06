@@ -146,12 +146,18 @@ function planFor(prompt) {
   return basePlan(prompt);
 }
 
+function lastUserPrompt(messages) {
+  const lastUser = [...messages].reverse().find((message) => message.role === "user");
+  if (!lastUser) throw new Error("missing user message");
+  return JSON.parse(lastUser.content).prompt;
+}
+
 function mockAI() {
   return {
     calls: [],
     async run(model, input) {
       this.calls.push({ model, input });
-      const prompt = JSON.parse(input.messages[1].content).prompt;
+      const prompt = lastUserPrompt(input.messages);
       return { response: JSON.stringify(planFor(prompt)) };
     },
   };
@@ -512,6 +518,28 @@ test("high-confidence recovered recipes run before Workers AI", async () => {
   assert.equal(ai.calls.length, 0);
   assert.ok(names(project).includes("Pin Table"));
   assertValid(project);
+});
+
+test("Workers AI planner includes LayoutGPT-style few-shot exemplars before the live prompt", async () => {
+  const ai = mockAI();
+  await createForgeProjectWithPlanner("wrench", { AI: ai }, { detail: "detailed" });
+  assert.equal(ai.calls.length, 1);
+  const messages = ai.calls[0].input.messages;
+  assert.ok(messages.length >= 5, `expected system + few-shots + user, got ${messages.length}`);
+  assert.equal(messages[0].role, "system");
+  assert.match(messages[0].content, /LayoutGPT/i);
+  assert.equal(messages[1].role, "user");
+  assert.equal(messages[2].role, "assistant");
+  assert.equal(messages[3].role, "user");
+  assert.equal(messages[4].role, "assistant");
+  const last = messages[messages.length - 1];
+  assert.equal(last.role, "user");
+  const payload = JSON.parse(last.content);
+  assert.equal(payload.prompt, "wrench");
+  assert.match(String(payload.layoutStyle ?? ""), /LayoutGPT/i);
+  const assistantPlan = JSON.parse(messages[2].content);
+  assert.ok(Array.isArray(assistantPlan.parts) && assistantPlan.parts.length >= 3);
+  assert.ok(assistantPlan.parts.every((part) => Array.isArray(part.relativePosition) && Array.isArray(part.relativeSize)));
 });
 
 test("Workers AI planner requests json_schema GeometryPlan response_format", async () => {
