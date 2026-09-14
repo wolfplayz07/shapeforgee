@@ -8,6 +8,7 @@ import {
 } from "../lib/geometry-plan.ts";
 import {
   createSemanticFallbackProject,
+  hasKnownSemanticFamily,
   tryRecoveredRecipeProject,
   type DetailLevel,
   type ForgeProject,
@@ -510,6 +511,21 @@ export async function createForgeProjectWithPlanner(
     return recovered;
   }
   logger("planner.recipe", { matched: false });
+
+  if (hasKnownSemanticFamily(prompt)) {
+    const warnings = ["Skipped Workers AI: known semantic family"];
+    const fallback = createSemanticFallbackProject(prompt, options, warnings);
+    fallback.planner = { source: "semantic-fallback", warnings };
+    fallback.history = [...fallback.history, "Planner source: semantic fallback (known family short-circuit)"];
+    logger("planner.family", { skippedWorkersAI: true, partCount: fallback.parts.length });
+    logger("planner.fallback", {
+      source: fallback.source,
+      plannerSource: fallback.planner?.source,
+      warnings,
+      partCount: fallback.parts.length,
+    });
+    return fallback;
+  }
 
   const warnings: string[] = [];
   const model = env.SHAPEFORGE_AI_MODEL || DEFAULT_WORKERS_AI_MODEL;
