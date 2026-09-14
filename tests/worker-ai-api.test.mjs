@@ -51,7 +51,7 @@ test("Worker /api/forge uses server-side Workers AI binding when available", asy
       new Request("http://localhost/api/forge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: "wrench", detail: "detailed", scale: 1 }),
+        body: JSON.stringify({ prompt: "kinetic sculpture", detail: "detailed", scale: 1 }),
       }),
       {
         AI: {
@@ -99,4 +99,52 @@ test("Worker /api/forge uses server-side Workers AI binding when available", asy
   assert.deepEqual(resultLog.plannerWarnings, []);
   assert.equal(resultLog.partCount, 4);
   assert.equal(resultLog.genericMainFrameSignature, false);
+});
+
+async function forgeWithMockAI(prompt) {
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}-${Math.random()}`);
+  const { default: worker } = await import(workerUrl.href);
+  const calls = [];
+  const response = await worker.fetch(
+    new Request("http://localhost/api/forge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, detail: "detailed", scale: 1 }),
+    }),
+    {
+      AI: {
+        async run(model, input) {
+          calls.push({ model, input });
+          return { response: JSON.stringify(aiPlan()) };
+        },
+      },
+      ASSETS: {
+        fetch: async () => new Response("Not found", { status: 404 }),
+      },
+    },
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  const body = await response.json();
+  return { status: response.status, body, calls };
+}
+
+test("known recovered recipes short-circuit Workers AI", async () => {
+  for (const prompt of ["a hammer", "stapler", "cordless drill"]) {
+    const { status, body, calls } = await forgeWithMockAI(prompt);
+    assert.equal(status, 200, prompt);
+    assert.equal(calls.length, 0, `${prompt} must not wait on Workers AI`);
+    assert.equal(body.project.planner.source, "recovered-recipe", prompt);
+    assert.ok(!body.project.parts.some((part) => /Primary Structure|Working Core|Main Frame/.test(part.name)), prompt);
+  }
+});
+
+test("known semantic families skip Workers AI instead of timing out into generic mush", async () => {
+  const { status, body, calls } = await forgeWithMockAI("coffee maker");
+  assert.equal(status, 200);
+  assert.equal(calls.length, 0);
+  assert.equal(body.project.planner.source, "semantic-fallback");
+  assert.ok(body.project.planner.warnings.some((warning) => /known semantic family/i.test(warning)));
+  assert.ok(body.project.parts.some((part) => /Carafe|Reservoir|Brew/.test(part.name)));
+  assert.ok(!body.project.parts.some((part) => /Primary Structure|Working Core|Main Frame/.test(part.name)));
 });

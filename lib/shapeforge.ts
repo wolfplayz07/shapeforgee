@@ -585,7 +585,7 @@ function semanticPlan(prompt: string): SemanticPlan {
   }
   if (/\b(transmission|gearbox|differential|clutch|reducer|drive\s+unit|motor\s+assembly|pump\s+assembly|valve\s+body)\b/.test(value)) return { family: "mechanicalSubassembly", name: title, subject: "subassembly" };
   if (/\b(eye\s*glasses|eyeglasses|spectacles|sunglasses|goggles|glasses)\b/.test(value)) return { family: "pairedWearable", name: title, subject: "eyewear" };
-  if (/\b(wrench|spanner|screwdriver|ratchet|chisel|file|scraper|pry\s*bar|hand\s+tool)\b/.test(value)) return { family: "elongatedHandTool", name: title, subject: "hand tool" };
+  if (/\b(wrench|spanner|screwdriver|ratchet|chisel|file|scraper|pry\s*bar|hammer|mallet|hand\s+tool)\b/.test(value)) return { family: "elongatedHandTool", name: title, subject: "hand tool" };
   if (/\b(lamp|light|sconce|lantern)\b/.test(value)) return { family: "lightingFixture", name: title, subject: "lamp", corePrompt: "lamp" };
   if (/\b(hoop|ring|loop|gasket|bracelet)\b/.test(value)) return { family: "loopObject", name: title, subject: "loop" };
   return { family: "genericAssembly", name: title, subject: title.toLowerCase() };
@@ -779,6 +779,11 @@ function inferGeneralUnknownSpecs(prompt: string): EverydaySpec[] {
 
 function matchesGeneralUnknownProfile(prompt: string) {
   return semanticPlan(prompt).family !== "genericAssembly";
+}
+
+/** True when semanticPlan already owns a non-generic family (skip Workers AI). */
+export function hasKnownSemanticFamily(prompt: string) {
+  return matchesGeneralUnknownProfile(prompt);
 }
 
 function generalUnknownProject(
