@@ -468,3 +468,14 @@ test("stapler recovered recipe builds anvil magazine hinge layout", () => {
   assert.ok(namesOf(project).includes("Rear Hinge"));
   assertValid(project);
 });
+
+test("hammer recovered recipe builds handle head claw", () => {
+  const project = createForgeProject("hammer", { detail: "detailed" });
+  assert.equal(project.source, "recovered-recipe");
+  assert.equal(project.name, "Hammer");
+  assert.ok(namesOf(project).includes("Handle"));
+  assert.ok(namesOf(project).includes("Striking Face"));
+  assert.ok(namesOf(project).includes("Claw"));
+  assert.ok(!namesOf(project).some((name) => /Main Frame|Outer Body|Drive Core/.test(name)));
+  assertValid(project);
+});
