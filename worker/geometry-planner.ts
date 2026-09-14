@@ -14,7 +14,7 @@ import {
 } from "../lib/shapeforge.ts";
 
 export const DEFAULT_WORKERS_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
-const DEFAULT_TIMEOUT_MS = 8_000;
+export const DEFAULT_TIMEOUT_MS = 15_000;
 
 export interface WorkersAIBinding {
   run(model: string, input: unknown): Promise<unknown>;
