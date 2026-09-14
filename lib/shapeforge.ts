@@ -91,6 +91,60 @@ const cylinder = (
   ...options,
 });
 
+const capsule = (
+  key: string,
+  name: string,
+  parentKey: string | undefined,
+  category: string,
+  purpose: string,
+  position: Vec3,
+  size: Vec3,
+  explode: Vec3,
+  color: string,
+  axis: CylinderAxis = "y",
+  options: Partial<Pick<EverydaySpec, "rotation" | "relatedKeys" | "detail">> = {},
+): EverydaySpec => ({
+  key,
+  name,
+  kind: "capsule",
+  axis,
+  parentKey,
+  category,
+  purpose,
+  position,
+  size,
+  explode,
+  color,
+  ...options,
+});
+
+const frustum = (
+  key: string,
+  name: string,
+  parentKey: string | undefined,
+  category: string,
+  purpose: string,
+  position: Vec3,
+  size: Vec3,
+  explode: Vec3,
+  color: string,
+  axis: CylinderAxis = "x",
+  options: Partial<Pick<EverydaySpec, "rotation" | "relatedKeys" | "detail">> = {},
+): EverydaySpec => ({
+  key,
+  name,
+  kind: "frustum",
+  axis,
+  parentKey,
+  category,
+  purpose,
+  position,
+  size,
+  explode,
+  color,
+  ...options,
+});
+
 function colorFromPrompt(prompt: string, fallback: string) {
   const value = prompt.toLowerCase();
   if (/\bwhite|ivory|cream\b/.test(value)) return "#d8d4ca";
@@ -435,11 +489,11 @@ function drillSpecs(prompt: string): EverydaySpec[] {
   const powerKeys = corded ? ["cordRelief"] : cordless ? ["batteryPack"] : ["powerInlet"];
   const specs: EverydaySpec[] = [
     box("housing", "Drill Motor Housing", undefined, "housing", addSpatial("Contains the motor and gears in a pistol-shaped body.", "above the handle and behind the chuck"), [-12, 8, 0], [102, 48, 46], [0, 70, 0], body, { rotation: [0, 0, -6], relatedKeys: ["gearbox", "handle"] }),
-    cylinder("gearbox", "Front Gearbox Collar", "housing", "motion", addSpatial("Steps motor speed down before the chuck.", "concentric with the chuck at the front of the housing"), [49, 10, 0], [34, 38, 38], [93, 42, 0], metal, "x", { rotation: [0, 0, -6], relatedKeys: ["chuck", "motor"] }),
-    cylinder("chuck", "Keyless Chuck", "gearbox", "output", addSpatial("Clamps the drill bit at the working end.", "attached to the front of the gearbox and coaxial with the bit"), [82, 10, 0], [37, 24, 24], [158, 24, 0], dark, "x", { rotation: [0, 0, -6], relatedKeys: ["bit"] }),
+    frustum("gearbox", "Front Gearbox Collar", "housing", "motion", addSpatial("Steps motor speed down before the chuck.", "concentric with the chuck at the front of the housing"), [49, 10, 0], [34, 38, 38], [93, 42, 0], metal, "x", { rotation: [0, 0, -6], relatedKeys: ["chuck", "motor"] }),
+    frustum("chuck", "Keyless Chuck", "gearbox", "output", addSpatial("Clamps the drill bit at the working end.", "attached to the front of the gearbox and coaxial with the bit"), [82, 10, 0], [37, 24, 24], [158, 24, 0], dark, "x", { rotation: [0, 0, -6], relatedKeys: ["bit"] }),
     cylinder("bit", "Drill Bit", "chuck", "output", addSpatial("Represents the removable cutting tool.", "projecting forward from the chuck"), [119, 10, 0], [50, 6, 6], [220, 12, 0], metal, "x", { rotation: [0, 0, -6], detail: true }),
     cylinder("motor", "Electric Motor", "housing", "power", addSpatial("Provides rotary drive for drilling.", "inside the rear housing and connected to the gearbox"), [-18, 8, 0], [48, 28, 28], [-54, 18, 0], "#59646c", "x", { relatedKeys: ["gearbox", ...powerKeys], detail: true }),
-    box("handle", "Angled Grip Handle", "housing", "support", addSpatial("Positions the hand below the motor body.", "below and slightly behind the housing"), [-32, -46, 0], [34, 84, 38], [-38, -106, 0], body, { rotation: [0, 0, 16], relatedKeys: ["trigger", ...powerKeys] }),
+    capsule("handle", "Angled Grip Handle", "housing", "support", addSpatial("Positions the hand below the motor body.", "below and slightly behind the housing"), [-32, -46, 0], [34, 84, 38], [-38, -106, 0], body, "y", { rotation: [0, 0, 16], relatedKeys: ["trigger", ...powerKeys] }),
     box("trigger", "Variable-Speed Trigger", "handle", "control", addSpatial("Controls motor speed with finger pressure.", "inside the front of the handle, below the housing"), [-7, -27, 0], [13, 25, 16], [14, -46, 50], dark, { rotation: [0, 0, 11], relatedKeys: ["motor"] }),
     box("vent", "Cooling Vents", "housing", "thermal", addSpatial("Lets motor heat escape.", "on the side wall beside the hidden motor"), [3, 12, -26], [34, 16, 4], [24, 42, -58], "#22282d", { detail: true }),
   ];

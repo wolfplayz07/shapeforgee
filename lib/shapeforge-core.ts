@@ -126,6 +126,60 @@ const cylinder = (
   ...options,
 });
 
+const capsule = (
+  key: string,
+  name: string,
+  parentKey: string | undefined,
+  category: string,
+  purpose: string,
+  position: Vec3,
+  size: Vec3,
+  explode: Vec3,
+  color: string,
+  axis: CylinderAxis = "y",
+  options: Partial<Pick<PartSpec, "rotation" | "relatedKeys" | "detail">> = {},
+): PartSpec => ({
+  key,
+  name,
+  parentKey,
+  category,
+  purpose,
+  position,
+  size,
+  explode,
+  color,
+  kind: "capsule",
+  axis,
+  ...options,
+});
+
+const frustum = (
+  key: string,
+  name: string,
+  parentKey: string | undefined,
+  category: string,
+  purpose: string,
+  position: Vec3,
+  size: Vec3,
+  explode: Vec3,
+  color: string,
+  axis: CylinderAxis = "x",
+  options: Partial<Pick<PartSpec, "rotation" | "relatedKeys" | "detail">> = {},
+): PartSpec => ({
+  key,
+  name,
+  parentKey,
+  category,
+  purpose,
+  position,
+  size,
+  explode,
+  color,
+  kind: "frustum",
+  axis,
+  ...options,
+});
+
 function a72Recipe(): Recipe {
   return {
     name: "A-72 Bowling Machine",
@@ -492,6 +546,40 @@ function flashlightRecipe(): Recipe {
   };
 }
 
+function cordlessDrillRecipe(prompt: string): Recipe {
+  const body = "#d2a237";
+  const dark = "#2d3338";
+  const metal = "#aeb8c0";
+  const corded = /\b(corded|corded\s+electric|plug[- ]?in|mains powered|power cord|with a cord)\b/i.test(prompt);
+  const cordless = /\b(cordless|battery[- ]?powered|battery pack|rechargeable)\b/i.test(prompt) && !corded;
+  const powerKeys = corded ? ["cordRelief"] : cordless ? ["batteryPack"] : ["powerInlet"];
+  const specs: PartSpec[] = [
+    box("housing", "Drill Motor Housing", undefined, "housing", "Contains the motor and gears in a pistol-shaped body. Spatial relationship: above the handle and behind the chuck.", [-12, 8, 0], [102, 48, 46], [0, 70, 0], body, { rotation: [0, 0, -6], relatedKeys: ["gearbox", "handle"] }),
+    frustum("gearbox", "Front Gearbox Collar", "housing", "motion", "Steps motor speed down before the chuck. Spatial relationship: concentric with the chuck at the front of the housing.", [49, 10, 0], [34, 38, 38], [93, 42, 0], metal, "x", { rotation: [0, 0, -6], relatedKeys: ["chuck", "motor"] }),
+    frustum("chuck", "Keyless Chuck", "gearbox", "output", "Clamps the drill bit at the working end. Spatial relationship: attached to the front of the gearbox and coaxial with the bit.", [82, 10, 0], [37, 24, 24], [158, 24, 0], dark, "x", { rotation: [0, 0, -6], relatedKeys: ["bit"] }),
+    cylinder("bit", "Drill Bit", "chuck", "output", "Represents the removable cutting tool. Spatial relationship: projecting forward from the chuck.", [119, 10, 0], [50, 6, 6], [220, 12, 0], metal, "x", { rotation: [0, 0, -6], detail: true }),
+    cylinder("motor", "Electric Motor", "housing", "power", "Provides rotary drive for drilling. Spatial relationship: inside the rear housing and connected to the gearbox.", [-18, 8, 0], [48, 28, 28], [-54, 18, 0], "#59646c", "x", { relatedKeys: ["gearbox", ...powerKeys], detail: true }),
+    capsule("handle", "Angled Grip Handle", "housing", "support", "Positions the hand below the motor body. Spatial relationship: below and slightly behind the housing.", [-32, -46, 0], [34, 84, 38], [-38, -106, 0], body, "y", { rotation: [0, 0, 16], relatedKeys: ["trigger", ...powerKeys] }),
+    box("trigger", "Variable-Speed Trigger", "handle", "control", "Controls motor speed with finger pressure. Spatial relationship: inside the front of the handle, below the housing.", [-7, -27, 0], [13, 25, 16], [14, -46, 50], dark, { rotation: [0, 0, 11], relatedKeys: ["motor"] }),
+    box("vent", "Cooling Vents", "housing", "thermal", "Lets motor heat escape. Spatial relationship: on the side wall beside the hidden motor.", [3, 12, -26], [34, 16, 4], [24, 42, -58], "#22282d", { detail: true }),
+  ];
+  if (corded) {
+    specs.push(
+      box("cordRelief", "Cord Strain Relief", "handle", "electrical", "Protects the mains cable where it enters the drill. Spatial relationship: attached to the bottom rear of the handle and connected to the motor wiring.", [-48, -86, -1], [18, 22, 20], [-80, -150, -25], dark, { relatedKeys: ["cord", "motor"] }),
+      cylinder("cord", "Power Cord", "cordRelief", "electrical", "Carries external electrical power. Spatial relationship: trailing out behind the handle instead of attaching as a battery.", [-88, -102, -4], [92, 8, 8], [-168, -182, -30], "#171d22", "x", { rotation: [0, 0, -24], relatedKeys: ["plug"] }),
+      box("plug", "Two-Prong Plug", "cord", "electrical", "Connects the corded drill to a wall outlet. Spatial relationship: at the free end of the power cord behind the tool.", [-136, -122, -4], [24, 18, 16], [-235, -215, -32], "#20272d", { relatedKeys: ["cord"], detail: true }),
+    );
+  } else if (cordless) {
+    specs.push(box("batteryPack", "Slide-On Battery Pack", "handle", "power", "Supplies removable cordless power. Spatial relationship: attached below the handle as the lowest mass.", [-30, -101, 0], [61, 31, 54], [-30, -176, 0], dark, { relatedKeys: ["handle", "motor"] }));
+  } else {
+    specs.push(box("powerInlet", "Power Inlet Module", "handle", "electrical", "Represents the electrical feed for the drill. Spatial relationship: inside the handle base and connected to the motor.", [-35, -95, 0], [42, 20, 36], [-44, -164, 0], dark, { relatedKeys: ["handle", "motor"], detail: true }));
+  }
+  return {
+    name: corded ? "Corded Drill" : cordless ? "Cordless Drill" : "Power Drill",
+    specs,
+  };
+}
+
 function horseshoeRecipe(): Recipe {
   return {
     name: "Horseshoe",
@@ -520,6 +608,7 @@ function matchRecipe(prompt: string): Recipe | null {
   if (/\bchair\b|\bstool\b/.test(value)) return chairRecipe();
   if (/\b(eye\s*-?\s*glasses|eyeglasses|spectacles|sunglasses|glasses|eyewear)\b/.test(value)) return eyeglassesRecipe();
   if (/\b(flash\s*-?\s*light|flashlight|torch)\b/.test(value)) return flashlightRecipe();
+  if (/\bimpact\s+driver\b|\bdrill\b/.test(value)) return cordlessDrillRecipe(prompt);
   if (/\bhorse\s*shoe\b|\bu[\s-]?bolt\b|\bu[\s-]?magnet\b|\bhorseshoe\b/.test(value)) return horseshoeRecipe();
   if (/\blamp\b|desk\s+light/.test(value)) return lampRecipe();
   if (/\bbicycle\b|\bbike\b/.test(value)) return bicycleRecipe();
