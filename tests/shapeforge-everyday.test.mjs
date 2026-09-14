@@ -396,3 +396,65 @@ test("flashlight recovered recipe builds head/body/tail hierarchy", () => {
   assert.ok(namesOf(project).includes("Tailcap"));
   assertValid(project);
 });
+
+test("cordless drill recovered recipe reads as a pistol-grip power tool", () => {
+  for (const prompt of ["cordless drill", "power drill", "cordless handheld drill"]) {
+    const project = createForgeProject(prompt, { detail: "detailed" });
+    assert.equal(project.source, "recovered-recipe", prompt);
+    assert.ok(/Drill$/.test(project.name), `${prompt} name=${project.name}`);
+    const byName = Object.fromEntries(project.parts.map((part) => [part.name, part]));
+    assert.ok(byName["Drill Motor Housing"], prompt);
+    assert.ok(byName["Front Gearbox Collar"], prompt);
+    assert.ok(byName["Keyless Chuck"], prompt);
+    assert.ok(byName["Angled Grip Handle"], prompt);
+    assert.ok(byName["Variable-Speed Trigger"], prompt);
+    assert.equal(byName["Front Gearbox Collar"].kind, "frustum", prompt);
+    assert.equal(byName["Keyless Chuck"].kind, "frustum", prompt);
+    assert.equal(byName["Angled Grip Handle"].kind, "capsule", prompt);
+    assert.ok(byName["Keyless Chuck"].position[0] > byName["Drill Motor Housing"].position[0], "chuck forward of housing");
+    assert.ok(byName["Drill Bit"].position[0] > byName["Keyless Chuck"].position[0], "bit forward of chuck");
+    assert.ok(byName["Angled Grip Handle"].position[1] < byName["Drill Motor Housing"].position[1], "handle below housing");
+    const positions = new Set(project.parts.map((part) => part.position.join(",")));
+    assert.ok(positions.size >= 6, `${prompt} should not stack parts`);
+    assert.ok(!namesOf(project).some((name) => /Main Frame|Outer Body|Drive Core/.test(name)), prompt);
+    assertValid(project);
+  }
+
+  const cordless = createForgeProject("cordless drill", { detail: "detailed" });
+  assert.equal(cordless.name, "Cordless Drill");
+  assert.ok(namesOf(cordless).includes("Slide-On Battery Pack"));
+  const battery = cordless.parts.find((part) => part.name === "Slide-On Battery Pack");
+  const handle = cordless.parts.find((part) => part.name === "Angled Grip Handle");
+  assert.ok(battery.position[1] < handle.position[1], "battery is the lowest mass");
+
+  const corded = createForgeProject("corded drill", { detail: "detailed" });
+  assert.equal(corded.source, "recovered-recipe");
+  assert.equal(corded.name, "Corded Drill");
+  assert.ok(namesOf(corded).includes("Power Cord"));
+  assert.ok(!namesOf(corded).includes("Slide-On Battery Pack"));
+
+  const basic = createForgeProject("cordless drill", { detail: "basic" });
+  const basicNames = namesOf(basic);
+  assert.ok(basicNames.includes("Drill Motor Housing"));
+  assert.ok(basicNames.includes("Keyless Chuck"));
+  assert.ok(basicNames.includes("Angled Grip Handle"));
+  assert.ok(basicNames.includes("Slide-On Battery Pack"));
+  assert.ok(!basicNames.includes("Electric Motor"));
+  assert.ok(!basicNames.includes("Drill Bit"));
+  assert.ok(!basicNames.includes("Cooling Vents"));
+
+  const screwdriver = createForgeProject("screwdriver", { detail: "detailed" });
+  assert.notEqual(screwdriver.name, "Cordless Drill");
+  assert.notEqual(screwdriver.name, "Power Drill");
+  assert.ok(!namesOf(screwdriver).includes("Keyless Chuck"));
+
+  const fallback = shapeforge.createSemanticFallbackProject("cordless drill", { detail: "detailed" });
+  assert.equal(fallback.planner?.source, "semantic-fallback");
+  const fallbackByName = Object.fromEntries(fallback.parts.map((part) => [part.name, part]));
+  assert.equal(fallbackByName["Front Gearbox Collar"].kind, "frustum");
+  assert.equal(fallbackByName["Keyless Chuck"].kind, "frustum");
+  assert.equal(fallbackByName["Angled Grip Handle"].kind, "capsule");
+  assert.ok(fallbackByName["Electric Motor"]);
+  assert.ok(fallbackByName["Slide-On Battery Pack"]);
+  assertValid(fallback);
+});
