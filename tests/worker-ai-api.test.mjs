@@ -51,7 +51,7 @@ test("Worker /api/forge uses server-side Workers AI binding when available", asy
       new Request("http://localhost/api/forge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: "stapler", detail: "detailed", scale: 1 }),
+        body: JSON.stringify({ prompt: "wrench", detail: "detailed", scale: 1 }),
       }),
       {
         AI: {
