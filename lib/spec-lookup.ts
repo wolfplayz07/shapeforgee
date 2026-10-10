@@ -209,7 +209,9 @@ function targetExtent(spec: PlannerSpec, project: ForgeProject): Vec3 | null {
 export function proportionFactors(current: Vec3, target: Vec3): Vec3 {
   const currentMax = Math.max(...current);
   const targetMax = Math.max(...target);
+  if (!(currentMax > 0) || !(targetMax > 0)) return [1, 1, 1];
   return current.map((value, axis) => {
+    if (!(value > 0) || !(target[axis] > 0)) return 1;
     const factor = (target[axis] / targetMax) / (value / currentMax);
     return Math.max(FACTOR_RANGE[0], Math.min(FACTOR_RANGE[1], factor));
   }) as Vec3;

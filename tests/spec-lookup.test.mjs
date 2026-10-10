@@ -91,6 +91,8 @@ test("generated fallback geometry is nudged toward sourced proportions within cl
   assert.ok(project.parts.some((part) => /impeller/i.test(part.name)));
   const factors = proportionFactors([100, 300, 100], [100, 100, 100]);
   for (const factor of factors) assert.ok(factor >= 0.7 && factor <= 1.45);
+  assert.deepEqual(proportionFactors([0, 0, 0], [1, 2, 3]), [1, 1, 1]);
+  assert.deepEqual(proportionFactors([10, 0, 10], [10, 10, 10]), [1, 1, 1]);
 });
 
 test("no trusted spec falls back to recipes and records it", async () => {
