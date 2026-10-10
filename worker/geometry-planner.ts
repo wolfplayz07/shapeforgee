@@ -14,6 +14,7 @@ import {
   type ForgeProject,
 } from "../lib/shapeforge.ts";
 import { salvageTruncatedJson } from "../lib/json-salvage.ts";
+import { applySpecToProject, lookupSpec, specLayoutPlan, specPromptHints, type SpecLookupOptions } from "../lib/spec-lookup.ts";
 
 export const DEFAULT_WORKERS_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
 export const DEFAULT_TIMEOUT_MS = 15_000;
@@ -32,12 +33,14 @@ export interface WorkersAIBinding {
 export interface GeometryPlannerProvider {
   readonly source: "workers-ai";
   readonly model: string;
-  plan(prompt: string, options?: { signal?: AbortSignal }): Promise<GeometryPlan>;
+  plan(prompt: string, options?: { signal?: AbortSignal; specHints?: Record<string, unknown> }): Promise<GeometryPlan>;
 }
 
 export interface PlannerEnv {
   AI?: WorkersAIBinding;
   SHAPEFORGE_AI_MODEL?: string;
+  /** Set to "off" to skip the NHTSA vPIC vehicle lookup. */
+  SHAPEFORGE_SPEC_VEHICLE_LOOKUP?: string;
 }
 
 type PlannerLogEvent =
@@ -358,16 +361,17 @@ function plannerSystemPrompt() {
   ].join("\n");
 }
 
-function plannerUserPrompt(prompt: string) {
+function plannerUserPrompt(prompt: string, specHints?: Record<string, unknown>) {
   return JSON.stringify({
     task: "Create a structured physical GeometryPlan for this ShapeForge prompt.",
     prompt,
     layoutStyle: "LayoutGPT-inspired few-shot numeric layout (concrete relativeSize/relativePosition; recognitionCriticalParts; bilateral mirroredFrom when symmetric; PartNeXt parentId hierarchies).",
+    ...(specHints ? { sourcedSpec: specHints } : {}),
     contract: geometryPlanContract,
   });
 }
 
-export function buildPlannerMessages(prompt: string) {
+export function buildPlannerMessages(prompt: string, specHints?: Record<string, unknown>) {
   const messages: Array<{ role: string; content: string }> = [
     { role: "system", content: plannerSystemPrompt() },
   ];
@@ -375,7 +379,7 @@ export function buildPlannerMessages(prompt: string) {
     messages.push({ role: "user", content: plannerUserPrompt(shot.prompt) });
     messages.push({ role: "assistant", content: JSON.stringify(shot.plan) });
   }
-  messages.push({ role: "user", content: plannerUserPrompt(prompt) });
+  messages.push({ role: "user", content: plannerUserPrompt(prompt, specHints) });
   return messages;
 }
 
@@ -427,9 +431,9 @@ export class CloudflareWorkersAIProvider implements GeometryPlannerProvider {
     this.logger = logger;
   }
 
-  async plan(prompt: string): Promise<GeometryPlan> {
+  async plan(prompt: string, options: { specHints?: Record<string, unknown> } = {}): Promise<GeometryPlan> {
     this.logger("planner.ai.start", { model: this.model, promptLength: prompt.length });
-    const messages = buildPlannerMessages(prompt);
+    const messages = buildPlannerMessages(prompt, options.specHints);
     const baseInput = {
       messages,
       temperature: 0.2,
@@ -519,15 +523,43 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 export async function createForgeProjectWithPlanner(
   prompt: string,
   env: PlannerEnv,
-  options: { scale?: number; detail?: DetailLevel; timeoutMs?: number; logger?: PlannerLogger } = {},
+  options: {
+    scale?: number;
+    detail?: DetailLevel;
+    timeoutMs?: number;
+    logger?: PlannerLogger;
+    specFetch?: SpecLookupOptions["fetch"];
+  } = {},
 ): Promise<ForgeProject> {
   const logger = options.logger ?? logPlanner;
+  // Spec lookup first: synchronous table + time-boxed vPIC. Never throws, never blocks long.
+  const lookup = await lookupSpec(prompt, {
+    fetch: options.specFetch,
+    vehicleLookup: env.SHAPEFORGE_SPEC_VEHICLE_LOOKUP !== "off",
+  });
+  const finish = (project: ForgeProject) => applySpecToProject(project, lookup);
+
   const recovered = tryRecoveredRecipeProject(prompt, options);
   if (recovered) {
     logger("planner.recipe", { matched: true, source: recovered.source, plannerSource: recovered.planner?.source, partCount: recovered.parts.length });
-    return recovered;
+    return finish(recovered);
   }
   logger("planner.recipe", { matched: false });
+
+  // A spec entry with a trusted layout beats both the family builders and the LLM.
+  const layoutRaw = lookup.entry ? specLayoutPlan(lookup.entry) : null;
+  if (layoutRaw) {
+    const validation = validateAndSanitizeGeometryPlan(layoutRaw, prompt);
+    if (validation.ok && validation.plan) {
+      const project = geometryPlanToProject(validation.plan, prompt, {
+        scale: options.scale,
+        detail: options.detail,
+        plannerSource: { source: "spec-table" },
+      });
+      project.history = [...project.history, `Planner source: spec table layout (${lookup.entry!.id})`];
+      return finish(project);
+    }
+  }
 
   if (hasKnownSemanticFamily(prompt)) {
     const warnings = ["Skipped Workers AI: known semantic family"];
@@ -541,7 +573,7 @@ export async function createForgeProjectWithPlanner(
       warnings,
       partCount: fallback.parts.length,
     });
-    return fallback;
+    return finish(fallback);
   }
 
   const warnings: string[] = [];
@@ -549,7 +581,7 @@ export async function createForgeProjectWithPlanner(
   if (env.AI) {
     try {
       const provider = new CloudflareWorkersAIProvider(env.AI, model, logger);
-      const plan = await withTimeout(provider.plan(prompt), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+      const plan = await withTimeout(provider.plan(prompt, { specHints: specPromptHints(lookup) }), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
       let project: ForgeProject;
       try {
         project = geometryPlanToProject(plan, prompt, {
@@ -563,7 +595,7 @@ export async function createForgeProjectWithPlanner(
       }
       logger("planner.conversion.success", { model, projectSource: project.source, partCount: project.parts.length });
       project.history = [...project.history, `Planner source: Workers AI (${model})`];
-      return project;
+      return finish(project);
     } catch (error) {
       warnings.push(errorMessage(error));
     }
@@ -581,5 +613,5 @@ export async function createForgeProjectWithPlanner(
     warnings,
     partCount: fallback.parts.length,
   });
-  return fallback;
+  return finish(fallback);
 }

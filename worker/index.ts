@@ -71,6 +71,7 @@ async function handleForgeGenerate(request: Request, env: Env) {
     plannerSource: project.planner?.source ?? null,
     plannerModel: project.planner?.model ?? null,
     plannerWarnings: project.planner?.warnings ?? [],
+    specMatched: project.planner?.spec?.matched ?? null,
     partCount: project.parts.length,
     genericMainFrameSignature,
   });
@@ -82,6 +83,7 @@ async function handleForgeGenerate(request: Request, env: Env) {
       plannerSource: project.planner?.source ?? null,
       plannerModel: project.planner?.model ?? null,
       plannerWarnings: project.planner?.warnings ?? [],
+    specMatched: project.planner?.spec?.matched ?? null,
       genericMainFrameSignature: true,
     }, 422);
   }
