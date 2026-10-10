@@ -213,7 +213,7 @@ export const GEOMETRY_PLAN_JSON_SCHEMA = {
     parts: {
       type: "array",
       minItems: 3,
-      maxItems: 32,
+      maxItems: 14,
       items: {
         type: "object",
         additionalProperties: false,
@@ -259,8 +259,8 @@ export const GEOMETRY_PLAN_JSON_SCHEMA = {
           relativePosition: vec3Schema,
           rotation: vec3Schema,
           parentId: { type: ["string", "null"] },
-          relatedIds: { type: "array", items: { type: "string" } },
-          spatialRelationships: { type: "array", items: { type: "string" } },
+          relatedIds: { type: "array", maxItems: 4, items: { type: "string" } },
+          spatialRelationships: { type: "array", maxItems: 2, items: { type: "string" } },
           mirroredFrom: { type: "string" },
           repeatGroup: { type: "string" },
           color: { type: "string" },
@@ -270,6 +270,7 @@ export const GEOMETRY_PLAN_JSON_SCHEMA = {
     },
     relationships: {
       type: "array",
+      maxItems: 8,
       items: {
         type: "object",
         additionalProperties: false,

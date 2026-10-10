@@ -625,9 +625,22 @@ function horseshoeRecipe(): Recipe {
   };
 }
 
+/**
+ * Vehicle sub-components. When a prompt names one of these ("car brake caliper", "Mustang alternator"),
+ * the user wants the component, not the whole vehicle, so the vehicle recipe must not win.
+ */
+export const VEHICLE_COMPONENT_PATTERN =
+  /\b(brakes?|calipers?|rotors?|brake\s+(?:discs?|pads?|lines?|drums?)|alternators?|starters?(?:\s+motor)?|radiators?|(?:water|fuel|oil|coolant|power\s+steering)\s+pumps?|engines?|motors?|pistons?|crankshafts?|camshafts?|cylinder\s+heads?|head\s+gaskets?|intake(?:\s+manifold)?|exhaust(?:\s+manifold)?|manifolds?|mufflers?|catalytic\s+converters?|spark\s+plugs?|injectors?|carburett?ors?|turbo(?:charger)?s?|superchargers?|transmissions?|gearbox(?:es)?|differentials?|clutch(?:es)?|axles?|drive\s*shafts?|cv\s+joints?|hubs?|wheel\s+bearings?|struts?|shocks?|shock\s+absorbers?|springs?|control\s+arms?|tie\s+rods?|steering\s+(?:rack|column|wheel)|batter(?:y|ies)|headlights?|headlamps?|tail\s*lights?|mirrors?|seats?|doors?|hood|bumpers?|fenders?|grilles?|tires?|tyres?|wheels?)\b/;
+
+export function isVehicleComponentPrompt(prompt: string) {
+  // "a red car with open doors" still means the car; only the head noun phrase decides.
+  const head = prompt.toLowerCase().split(/\b(?:with|without|including|and\s+its)\b/)[0];
+  return VEHICLE_COMPONENT_PATTERN.test(head);
+}
+
 function matchRecipe(prompt: string): Recipe | null {
   const value = prompt.toLowerCase();
-  if (/\b(chevelle|mustang|camaro|charger|corvette|car|automobile|coupe|sedan|roadster)\b/.test(value)) return vehicleRecipe(prompt);
+  if (/\b(chevelle|mustang|camaro|charger|corvette|car|automobile|coupe|sedan|roadster)\b/.test(value) && !isVehicleComponentPrompt(value)) return vehicleRecipe(prompt);
   if (/a\s*-?\s*72|bowling\s+machine/.test(value)) return a72Recipe();
   if (/desk\s+fan|\bfan\b/.test(value)) return fanRecipe();
   // Office/desk chairs before table's \bdesk\b so "desk chair" / "office desk chair" stay officeChair.

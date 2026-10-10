@@ -554,6 +554,7 @@ type SemanticFamily =
   | "beverageAppliance"
   | "printer"
   | "pump"
+  | "fluidPump"
   | "blender"
   | "laundryAppliance"
   | "pairedWearable"
@@ -578,7 +579,9 @@ function semanticPlan(prompt: string): SemanticPlan {
   if (/\b(coffee\s*maker|coffee\s*machine|espresso|brewer|drip\s*coffee)\b/.test(value)) return { family: "beverageAppliance", name: title, subject: "coffee maker" };
   if (/\b(desktop\s*)?(printer|scanner\s*printer|inkjet|laser\s*printer)\b/.test(value)) return { family: "printer", name: title, subject: "printer" };
   if (/\b(blender|food\s*processor|smoothie\s*maker)\b/.test(value)) return { family: "blender", name: title, subject: "blender" };
-  if (/\b(bicycle|bike)?\s*(pump|floor\s*pump|tire\s*pump)|drain\s+pump|water\s+pump|fuel\s+pump\b/.test(value)) return { family: "pump", name: title, subject: "pump" };
+  // Liquid-moving pumps (engine water pump, fuel pump, drain/sump pump) are rotary housings, not bike floor pumps.
+  if (/\b(water|coolant|fuel|oil|drain|sump|pool|well|centrifugal|transfer|hydraulic|power\s+steering|washer|circulat(?:ing|ion)|booster)\s+pumps?\b/.test(value)) return { family: "fluidPump", name: title, subject: "fluid pump" };
+  if (/\b(bicycle|bike)?\s*(pump|floor\s*pump|tire\s*pump)\b/.test(value)) return { family: "pump", name: title, subject: "pump" };
   if (/\b(washing\s*machine|washer(?!\s*fluid)|clothes\s*dryer|laundry\s*(machine|dryer|washer)|tumble\s*dryer)\b/.test(value) && !/\bhair\s*dryer\b/.test(value)) {
     const subject = /\bdryer\b/.test(value) ? "dryer" : "washing machine";
     return { family: "laundryAppliance", name: title, subject };
@@ -708,6 +711,33 @@ function pumpSpecs(prompt: string): EverydaySpec[] {
 }
 
 
+/** Rotary liquid pump (automotive water pump, fuel/drain pump): volute housing, impeller, shaft, pulley, ports. */
+function fluidPumpSpecs(prompt: string): EverydaySpec[] {
+  const value = prompt.toLowerCase();
+  const automotive = /\b(water|coolant|power\s+steering|oil)\b/.test(value) || /\b(car|engine|truck|vehicle)\b/.test(value);
+  const housing = colorFromPrompt(prompt, automotive ? "#9aa3a8" : "#5f7f92");
+  const dark = "#2d353b";
+  const specs: EverydaySpec[] = [
+    cylinder("housing", "Pump Housing (Volute)", undefined, "housing", addSpatial("Encloses the impeller and guides liquid to the outlet.", "central round casting that every other part attaches to"), [0, 0, 0], [96, 96, 44], [0, 0, -70], housing, "z", { relatedKeys: ["impeller", "inlet", "outlet", "flange"] }),
+    cylinder("impeller", "Impeller", "housing", "motion", addSpatial("Spins to push liquid outward through the volute.", "inside the housing, concentric with the shaft"), [0, 0, -14], [70, 70, 12], [0, 0, -150], "#c7a15a", "z", { relatedKeys: ["shaft"] }),
+    cylinder("shaft", "Drive Shaft & Bearing", "housing", "motion", addSpatial("Carries the impeller and transfers drive torque.", "concentric through the housing center, extending forward"), [0, 0, 40], [22, 22, 70], [0, 0, 60], "#b7c0c6", "z", { relatedKeys: ["impeller", "pulley"] }),
+    box("flange", "Mounting Flange", "housing", "fastener", addSpatial("Bolts the pump to the engine block or frame.", "flat plate behind the housing"), [0, 0, -30], [128, 112, 8], [0, 0, -105], dark, { relatedKeys: ["housing", "gasket"] }),
+    cylinder("inlet", "Inlet Port", "housing", "fluid", addSpatial("Lets liquid enter the pump.", "pipe stub on the lower side of the housing"), [-62, -30, 0], [46, 22, 22], [-140, -60, 0], housing, "x", { relatedKeys: ["housing"] }),
+    cylinder("outlet", "Outlet Port", "housing", "fluid", addSpatial("Sends pressurised liquid out.", "pipe stub on the upper side of the housing, tangent to the volute"), [40, 56, 0], [22, 44, 22], [80, 130, 0], housing, "y", { relatedKeys: ["housing"] }),
+  ];
+  if (automotive) {
+    specs.push(
+      cylinder("pulley", "Drive Pulley Hub", "shaft", "power", addSpatial("Belt-driven hub that turns the shaft.", "on the front end of the shaft, outside the housing"), [0, 0, 82], [84, 84, 14], [0, 0, 150], dark, "z", { relatedKeys: ["shaft"] }),
+      cylinder("gasket", "Housing Gasket", "flange", "fastener", addSpatial("Seals the pump to the engine block.", "thin ring behind the mounting flange"), [0, 0, -36], [104, 104, 3], [0, 0, -190], "#3f6b4f", "z", { relatedKeys: ["flange"], detail: true }),
+    );
+  } else {
+    specs.push(
+      box("motor", "Electric Drive Motor", "shaft", "power", addSpatial("Turns the shaft and impeller.", "behind the shaft, opposite the inlet"), [0, 0, 92], [64, 64, 70], [0, 0, 170], dark, { relatedKeys: ["shaft"] }),
+    );
+  }
+  return specs;
+}
+
 function laundryApplianceSpecs(prompt: string): EverydaySpec[] {
   const value = prompt.toLowerCase();
   const isDryer = /\bdryer\b/.test(value);
@@ -758,6 +788,8 @@ function inferGeneralUnknownSpecs(prompt: string): EverydaySpec[] {
       return printerSpecs(prompt);
     case "pump":
       return pumpSpecs(prompt);
+    case "fluidPump":
+      return fluidPumpSpecs(prompt);
     case "blender":
       return blenderSpecs(prompt);
     case "laundryAppliance":
