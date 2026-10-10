@@ -13,9 +13,17 @@ import {
   type DetailLevel,
   type ForgeProject,
 } from "../lib/shapeforge.ts";
+import { salvageTruncatedJson } from "../lib/json-salvage.ts";
 
 export const DEFAULT_WORKERS_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
 export const DEFAULT_TIMEOUT_MS = 15_000;
+/**
+ * Output budget for the planner reply. Live replies were cut off at ~7.7k–8.3k chars with 2400.
+ * Cloudflare documents a 128k context window for llama-3.1-8b-instruct-fast and no separate output
+ * ceiling (max_tokens default 256), so the binding limit is not the constraint; latency is. We raise the
+ * cap modestly and shrink the requested output (≤12 parts, terse strings) instead of asking for more.
+ */
+export const PLANNER_MAX_TOKENS = 3072;
 
 export interface WorkersAIBinding {
   run(model: string, input: unknown): Promise<unknown>;
@@ -38,6 +46,7 @@ type PlannerLogEvent =
   | "planner.ai.success"
   | "planner.ai.error"
   | "planner.ai.parse_error"
+  | "planner.ai.salvaged"
   | "planner.validation.success"
   | "planner.validation.error"
   | "planner.conversion.success"
@@ -342,7 +351,9 @@ function plannerSystemPrompt() {
     "Use the provided few-shot GeometryPlan exemplars as placement style guides; copy their numeric discipline and recognitionCriticalParts habit, not their object identity.",
     "When silhouette.symmetry is bilateral, emit mirrored left/right pairs with mirroredFrom set.",
     "Use PartNeXt-style hierarchies: housing/structure parents own internal children via parentId; keep trees acyclic and recognition-critical leaves attached.",
-    "Keep 4 to 18 parts unless the object truly needs more.",
+    "Keep 5 to 12 parts. The output budget is small: be terse so the JSON always finishes.",
+    "purpose: at most 8 words. spatialRelationships: at most 2 short phrases. relationships: at most 6. plannerNotes: at most 12 words.",
+    "Omit optional fields you do not need (color, detail, repeatGroup; mirroredFrom only for true mirror pairs).",
     "Do not emit code, markdown, prose, comments, or trailing commas.",
   ].join("\n");
 }
@@ -385,16 +396,12 @@ function extractJsonText(result: unknown): string {
   return "";
 }
 
-function parsePlannerResult(result: unknown) {
+export function parsePlannerResult(result: unknown): { value: unknown; repaired: boolean; droppedChars: number } {
   const text = extractJsonText(result).trim();
   if (!text) throw new Error("EMPTY_MODEL_RESPONSE");
-  try {
-    return JSON.parse(text);
-  } catch {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("MALFORMED_MODEL_JSON");
-    return JSON.parse(match[0]);
-  }
+  const salvaged = salvageTruncatedJson(text);
+  if (!salvaged) throw new Error("MALFORMED_MODEL_JSON");
+  return salvaged;
 }
 
 function isJsonModeFailure(error: unknown) {
@@ -426,7 +433,7 @@ export class CloudflareWorkersAIProvider implements GeometryPlannerProvider {
     const baseInput = {
       messages,
       temperature: 0.2,
-      max_tokens: 2400,
+      max_tokens: PLANNER_MAX_TOKENS,
     };
     let result: unknown;
     let responseFormat: "json_schema" | "json_object" = "json_schema";
@@ -467,8 +474,14 @@ export class CloudflareWorkersAIProvider implements GeometryPlannerProvider {
     });
 
     let parsed: unknown;
+    let salvageWarning: string | undefined;
     try {
-      parsed = parsePlannerResult(result);
+      const outcome = parsePlannerResult(result);
+      parsed = outcome.value;
+      if (outcome.repaired) {
+        salvageWarning = `Recovered truncated planner JSON (dropped ${outcome.droppedChars} trailing chars).`;
+        this.logger("planner.ai.salvaged", { model: this.model, droppedChars: outcome.droppedChars });
+      }
     } catch (error) {
       this.logger("planner.ai.parse_error", { model: this.model, error: errorMessage(error), ...responseShape(result) });
       throw error;
@@ -486,8 +499,12 @@ export class CloudflareWorkersAIProvider implements GeometryPlannerProvider {
       partCount: validation.plan.parts.length,
       warnings: validation.warnings,
     });
+    this.lastWarnings = salvageWarning ? [salvageWarning] : [];
     return validation.plan;
   }
+
+  /** Warnings from the most recent successful plan() call (currently: truncated-JSON salvage). */
+  lastWarnings: string[] = [];
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -538,7 +555,7 @@ export async function createForgeProjectWithPlanner(
         project = geometryPlanToProject(plan, prompt, {
           scale: options.scale,
           detail: options.detail,
-          plannerSource: { source: "workers-ai", model },
+          plannerSource: { source: "workers-ai", model, warnings: provider.lastWarnings.length ? provider.lastWarnings : undefined },
         });
       } catch (error) {
         logger("planner.conversion.error", { model, error: errorMessage(error) });
