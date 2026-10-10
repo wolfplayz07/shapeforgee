@@ -92,6 +92,7 @@ const cloneProject = (project: ForgeProject): ForgeProject =>
 function sourceLabel(project: ForgeProject) {
   if (project.planner?.source === "workers-ai") return "Workers AI planner";
   if (project.planner?.source === "semantic-fallback") return "Semantic fallback";
+  if (project.planner?.source === "spec-table") return "Spec table layout";
   if (project.source === "procedural-concept") return "Procedural concept";
   if (project.source === "procedural-vehicle") return "Vehicle generator";
   if (project.source === "imported") return "Recovered import";
@@ -101,6 +102,7 @@ function sourceLabel(project: ForgeProject) {
 
 function generatedStatus(project: ForgeProject) {
   if (project.planner?.source === "workers-ai") return `Forged “${project.name}” with Workers AI physical planning.`;
+  if (project.planner?.source === "spec-table") return `Forged “${project.name}” from the sourced spec table.`;
   if (project.source === "procedural-concept") return `Forged a procedural concept for “${project.name}”.`;
   if (project.source === "procedural-vehicle") return `Forged ${project.name} with the vehicle-specific generator.`;
   return `Generated ${project.name} from the recovered ShapeForge library.`;

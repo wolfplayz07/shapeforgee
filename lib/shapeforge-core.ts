@@ -30,14 +30,38 @@ export interface ForgeProject {
   createdAt: string;
   source: "recovered-recipe" | "procedural-vehicle" | "procedural-concept" | "workers-ai" | "emergency-fallback" | "imported";
   planner?: {
-    source: "recovered-recipe" | "workers-ai" | "semantic-fallback" | "emergency-fallback" | "imported";
+    source: "recovered-recipe" | "workers-ai" | "semantic-fallback" | "spec-table" | "emergency-fallback" | "imported";
     model?: string;
     warnings?: string[];
+    /** Spec lookup provenance (see lib/spec-lookup.ts). Optional; older projects omit it. */
+    spec?: PlannerSpec;
   };
   allocator: { nextComponent: number };
   settings: { scale: number; detail: DetailLevel };
   parts: ForgePart[];
   history: string[];
+}
+
+export interface PlannerSpecValue {
+  value: number;
+  source: string;
+  confidence: "spec" | "measured" | "typical" | "estimated" | "unknown";
+  note?: string;
+}
+
+export interface PlannerSpec {
+  matched: string | null;
+  label?: string;
+  extentMm?: { x: PlannerSpecValue; y: PlannerSpecValue; z: PlannerSpecValue };
+  parts?: { names: string[]; source: string; confidence: string };
+  partCoverage?: { present: string[]; missing: string[] };
+  attachments?: Array<{ a: string; b: string; kind: string; fastener?: string; source: string; confidence: string; linked: boolean }>;
+  vehicle?: { year: number; make: string; model: string; trim?: string; lengthMm: number; widthMm: number; heightMm: number; wheelbaseMm?: number; source: string; confidence: string };
+  applied: string[];
+  lookups: Array<{ source: string; status: "hit" | "miss" | "timeout" | "error" | "skipped"; ms?: number; note?: string }>;
+  sources: Array<{ id: string; title: string; url?: string; license: string }>;
+  torque: string;
+  procedures: string;
 }
 
 export interface ValidationCheck {
